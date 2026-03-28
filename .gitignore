@@ -1,0 +1,19 @@
+ # Data files - không push lên GitHub (file quá lớn)
+data/
+logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+.venv/
+
+# VS Code
+.vscode/
+
+# Docker volumes
+postgres_data/
+# Environment variables (ch?a password)
+.env

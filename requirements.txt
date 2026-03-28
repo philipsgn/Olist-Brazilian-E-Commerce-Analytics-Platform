@@ -1,0 +1,7 @@
+pandas==2.2.2
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.30
+requests==2.32.2
+python-dotenv==1.0.1
+# Trong PowerShell, đang ở thư mục ecommerce-de-project
+dbt-postgres==1.8.0

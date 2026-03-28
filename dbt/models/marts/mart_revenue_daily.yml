@@ -1,0 +1,16 @@
+-- dbt/models/marts/mart_revenue_daily.sql
+select
+    d.year,
+    d.month,
+    d.quarter,
+    p.product_category,
+    c.customer_state,
+    sum(f.price) as gross_revenue,
+    sum(f.freight_value) as freight_cost,
+    count(distinct f.order_id) as total_orders,
+    count(distinct f.customer_id) as unique_customers
+from {{ ref('fact_order_items') }} f
+join {{ ref('dim_date') }} d on f.order_date_id = d.date_id
+join {{ ref('dim_products') }} p on f.product_id = p.product_id
+join {{ ref('dim_customers') }} c on f.customer_id = c.customer_id
+group by 1, 2, 3, 4, 
