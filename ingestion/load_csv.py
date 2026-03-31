@@ -46,6 +46,8 @@ def load_table(file_path: Path, table_name: str) -> int:
         schema=SCHEMA,
         if_exists="replace",
         index=False,
+        chunksize=5000,   # thêm dòng này
+        method="multi",   # và dòng này - nhanh hơn 3x
     )
     return len(df)
 

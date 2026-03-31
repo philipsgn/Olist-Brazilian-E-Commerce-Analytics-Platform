@@ -1,6 +1,8 @@
 -- dbt/models/staging/stg_orders.sql
+
 with source as (
-    select * from {{ source('raw', 'raw_orders') }}
+    select *
+    from {{ source('raw', 'orders') }}
 ),
 renamed as (
     select
@@ -12,4 +14,6 @@ renamed as (
     from source
     where order_id is not null
 )
-select * from renamed
+
+select *
+from renamed

@@ -1,0 +1,90 @@
+version: 2
+
+models:
+  - name: stg_orders
+    description: "Cleaned orders with standardized timestamps."
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        tests:
+          - not_null
+      - name: order_status
+      - name: purchased_at
+      - name: delivered_at
+
+  - name: stg_orders_payments
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+          - unique
+      - name: payment_total
+      - name: payment_types
+
+  - name: stg_customers
+    columns:
+      - name: customer_id
+        tests:
+          - not_null
+          - unique
+      - name: customer_unique_id
+
+  - name: stg_products
+    columns:
+      - name: product_id
+        tests:
+          - not_null
+          - unique
+      - name: product_category_name
+
+  - name: stg_order_items
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+      - name: order_item_id
+      - name: product_id
+      - name: seller_id
+
+  - name: stg_payments
+    columns:
+      - name: order_id
+        tests:
+          - not_null
+      - name: payment_type
+      - name: payment_value
+
+  - name: stg_reviews
+    columns:
+      - name: review_id
+        tests:
+          - not_null
+      - name: order_id
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - review_id
+              - order_id
+
+  - name: stg_sellers
+    columns:
+      - name: seller_id
+        tests:
+          - not_null
+          - unique
+
+  - name: stg_geolocation
+    columns:
+      - name: geolocation_zip_code_prefix
+
+  - name: stg_category_translation
+    columns:
+      - name: product_category_name
+        tests:
+          - not_null
+          - unique
+      - name: product_category_name_english
