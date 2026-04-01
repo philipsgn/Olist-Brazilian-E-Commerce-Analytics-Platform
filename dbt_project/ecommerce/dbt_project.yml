@@ -13,9 +13,10 @@ clean-targets: ["target", "dbt_packages"]
 
 models:
   ecommerce:
-    staging:          # Models in staging/
-      +materialized: view     # Views for staging (logical layer)
-    marts:            # Models in marts/
+    staging:
+      +schema: staging      
+      +materialized: view
+    marts:
       +schema: marts
-      +materialized: table    # Tables for curated marts
+      +materialized: table
       +enabled: true

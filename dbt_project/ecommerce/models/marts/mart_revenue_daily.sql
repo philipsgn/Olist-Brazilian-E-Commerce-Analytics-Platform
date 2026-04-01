@@ -1,50 +1,66 @@
--- dbt/models/marts/mart_revenue_daily.sql
+-- mart_revenue_daily.sql
+-- Daily revenue aggregated for Superset dashboard
+-- Materialized as table for simplicity (no incremental complexity)
 
 {{ config(
-    materialized='incremental',
-    unique_key=['year', 'month', 'quarter', 'product_category', 'customer_state'],
-    incremental_strategy='delete+insert',
-    on_schema_change='sync_all_columns'
+    materialized='table'
 ) }}
 
-with base as (
+with fact as (
+    select * from {{ ref('fact_order_items') }}
+),
+
+dim_date as (
+    select * from {{ ref('dim_date') }}
+),
+
+dim_products as (
+    select * from {{ ref('dim_products') }}
+),
+
+dim_customers as (
+    select * from {{ ref('dim_customers') }}
+),
+
+joined as (
     select
         d.year,
         d.month,
         d.quarter,
+        d.day,
         p.product_category,
         c.customer_state,
         f.price,
         f.freight_value,
         f.order_id,
-        f.customer_id,
-        f.order_date_id
-    from {{ ref('fact_order_items') }} f
-    join {{ ref('dim_date') }} d on f.order_date_id = d.date_id
-    join {{ ref('dim_products') }} p on f.product_id = p.product_id
-    join {{ ref('dim_customers') }} c on f.customer_id = c.customer_id
-)
+        f.customer_id
 
-{% if is_incremental() %}
-, max_existing as (
-    select coalesce(max(order_date_id), date '1900-01-01') as max_date
-    from {{ this }}
+    from fact f
+    join dim_date     d on f.order_date_id  = d.date_id
+    join dim_products p on f.product_id     = p.product_id
+    join dim_customers c on f.customer_id   = c.customer_id
 )
-{% endif %}
 
 select
     year,
     month,
     quarter,
+    day,
     product_category,
     customer_state,
-    sum(price) as gross_revenue,
-    sum(freight_value) as freight_cost,
-    count(distinct order_id) as total_orders,
-    count(distinct customer_id) as unique_customers,
-    max(order_date_id) as order_date_id
-from base
-{% if is_incremental() %}
-where base.order_date_id >= (select max_date from max_existing)
-{% endif %}
-group by 1, 2, 3, 4, 5
+
+    -- Revenue metrics
+    round(sum(price)::numeric, 2)          as gross_revenue,
+    round(sum(freight_value)::numeric, 2)  as freight_cost,
+    round(sum(price + freight_value)::numeric, 2) as total_revenue,
+
+    -- Order metrics
+    count(distinct order_id)               as total_orders,
+    count(distinct customer_id)            as unique_customers,
+
+    -- Average metrics
+    round(avg(price)::numeric, 2)          as avg_order_value
+
+from joined
+group by 1, 2, 3, 4, 5, 6
+order by year, month, product_category
