@@ -3,5 +3,7 @@ psycopg2-binary==2.9.9
 sqlalchemy==2.0.30
 requests==2.32.2
 python-dotenv==1.0.1
-# Trong PowerShell, đang ở thư mục ecommerce-de-project
-dbt-postgres==1.8.0
+faker==25.2.0
+cryptography==42.0.5
+dbt-core==1.10.0
+dbt-postgres==1.10.0

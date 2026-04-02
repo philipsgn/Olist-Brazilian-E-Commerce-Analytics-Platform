@@ -1,0 +1,15 @@
+ecommerce:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: postgres        # Using Docker service name (not localhost) since we are inside the container network
+      user: "{{ env_var('POSTGRES_USER', 'de_user') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD', 'de_password') }}"
+      port: 5432            # The internal Docker port for Postgres, not the exposed host port
+      dbname: "{{ env_var('POSTGRES_DB', 'ecommerce_db') }}"
+      schema: raw           # Fallback schema; proper schema handled by target/macro config
+      threads: 4
+      keepalives_idle: 0
+      # generate_schema_name macro override ensures dbt puts objects in clean schemas 
+      # instead of raw_custom_schema by ignoring the default behavior.

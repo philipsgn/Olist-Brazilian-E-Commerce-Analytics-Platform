@@ -1,0 +1,29 @@
+FROM apache/airflow:2.9.3
+
+# Switch to the default airflow user (not root) to ensure correct file permissions
+USER airflow
+
+# Upgrade pip to ensure the latest package resolution logic
+RUN pip install --no-cache-dir --upgrade pip
+
+# Uninstall existing dbt packages to avoid version contamination
+RUN pip uninstall -y dbt-core dbt-postgres || true
+
+# Handle dependency conflicts by creating an isolated virtual environment for dbt.
+# Airflow has hundreds of strict dependencies that often clash with dbt.
+# By only explicitly installing dbt-postgres, pip gracefully resolves dbt-core 1.10.0 locally as a dependency 
+# without triggering the strict protobuf conflict that happens when you pin both simultaneously!
+RUN python -m venv /opt/airflow/dbt_venv && \
+    export PIP_CONSTRAINT="" && \
+    /opt/airflow/dbt_venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /opt/airflow/dbt_venv/bin/pip install --no-cache-dir dbt-postgres==1.10.0
+
+# Prepend the dbt virtual environment to the PATH so the 'dbt' command works natively
+# in terminal sessions.
+ENV PATH="/opt/airflow/dbt_venv/bin:$PATH"
+
+# CRITICAL FIX: The DAG explicitly hardcodes PATH to start with "/home/airflow/.local/bin".
+# Since you requested NOT to change the DAG logic, we create a symlink so the DAG can 
+# successfully find the new isolated dbt binary!
+RUN mkdir -p /home/airflow/.local/bin && \
+    ln -s /opt/airflow/dbt_venv/bin/dbt /home/airflow/.local/bin/dbt

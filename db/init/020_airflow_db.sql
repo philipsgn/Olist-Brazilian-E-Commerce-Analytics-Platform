@@ -1,12 +1,9 @@
--- ============================================
--- 01_init.sql
--- Chạy tự động khi PostgreSQL khởi động lần đầu
--- ============================================
+-- Initialize Airflow metadata database and app schemas
 
--- Tạo database riêng cho Airflow
+-- Create a dedicated database for Airflow metadata
 CREATE DATABASE airflow;
 
--- Kết nối vào ecommerce_db để tạo schemas
+-- Connect to ecommerce_db to create schemas
 \c ecommerce_db;
 
 CREATE SCHEMA IF NOT EXISTS raw;

@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 # --- Configuration ---
 # Map CSV filename -> target table name
@@ -38,19 +38,31 @@ def get_engine():
 
 
 def load_table(file_path: Path, table_name: str) -> int:
-    df = pd.read_csv(file_path)
+    """
+    Load CSV into PostgreSQL.
+    Use TRUNCATE + append instead of replace to:
+    - Keep indexes, constraints, grants
+    - Be safe to re-run (idempotent)
+    - Avoid drop/recreate overhead
+    """
+    df = pd.read_csv(file_path, low_memory=False)
     engine = get_engine()
-    df.to_sql(
-        name=table_name,
-        con=engine,
-        schema=SCHEMA,
-        if_exists="replace",
-        index=False,
-        chunksize=5000,   # thêm dòng này
-        method="multi",   # và dòng này - nhanh hơn 3x
-    )
-    return len(df)
 
+    with engine.begin() as conn:
+        # Clear data but keep table structure
+        conn.execute(text(f'TRUNCATE TABLE {SCHEMA}."{table_name}"'))
+
+        # Append fresh data into the existing table
+        df.to_sql(
+            name=table_name,
+            con=conn,
+            schema=SCHEMA,
+            if_exists="append",
+            index=False,
+            chunksize=5000,
+            method="multi",
+        )
+    return len(df)
 
 def run_ingestion() -> None:
     for filename, table_name in DATASET_CONFIG.items():
@@ -78,3 +90,4 @@ def run_ingestion() -> None:
 
 if __name__ == "__main__": 
     run_ingestion()
+
