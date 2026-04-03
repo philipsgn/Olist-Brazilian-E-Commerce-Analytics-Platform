@@ -3,7 +3,7 @@ ecommerce:
   outputs:
     dev:
       type: postgres
-      host: postgres        # Using Docker service name (not localhost) since we are inside the container network
+      host: "{{ env_var('POSTGRES_HOST', 'postgres') }}"
       user: "{{ env_var('POSTGRES_USER', 'de_user') }}"
       password: "{{ env_var('POSTGRES_PASSWORD', 'de_password') }}"
       port: 5432            # The internal Docker port for Postgres, not the exposed host port
