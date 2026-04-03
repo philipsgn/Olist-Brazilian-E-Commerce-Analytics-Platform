@@ -1,19 +1,28 @@
- # Data files - không push lên GitHub (file quá lớn)
+# Data & Logs
 data/
 logs/
+airflow/logs/
+dbt_project/ecommerce/logs/
+dbt_project/ecommerce/target/
+dbt_project/ecommerce/dbt_packages/
 
-# Python
+# Python & Venv
 __pycache__/
 *.pyc
 *.pyo
-.env
 venv/
 .venv/
 
-# VS Code
-.vscode/
-
-# Docker volumes
-postgres_data/
-# Environment variables (ch?a password)
+# Environment & Secrets
 .env
+auth.json
+
+# IDEs
+.vscode/
+.idea/
+
+# Database Data
+postgres_data/
+
+# Tmp
+tmp/

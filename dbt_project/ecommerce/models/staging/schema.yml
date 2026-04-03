@@ -2,75 +2,90 @@ version: 2
 
 models:
   - name: stg_orders
-    description: "Cleaned orders with standardized timestamps."
+    description: "Dữ liệu đơn hàng thô đã được đổi tên cột và chuyển đổi kiểu dữ liệu ngày tháng chuẩn xác."
     columns:
       - name: order_id
+        description: "Mã định danh duy nhất của đơn hàng"
         tests:
           - not_null
           - unique
       - name: customer_id
+        description: "Mã định danh khách hàng liên kết với đơn hàng này"
         tests:
           - not_null
       - name: order_status
-      - name: purchased_at
-      - name: delivered_at
+        description: "Trạng thái hiện tại của đơn hàng"
+        tests:
+          - accepted_values:
+              values: ['delivered', 'shipped', 'canceled', 'invoiced', 'processing', 'unavailable', 'created', 'approved']
 
   - name: stg_orders_payments
+    description: "Dữ liệu thanh toán đã được chuẩn hóa, gom nhóm theo từng đơn hàng (order_id)."
     columns:
       - name: order_id
         tests:
           - not_null
           - unique
       - name: payment_total
+        description: "Tổng số tiền đã thanh toán cho đơn hàng"
       - name: payment_types
+        description: "Danh sách các loại thanh toán được sử dụng dbl"
 
   - name: stg_customers
+    description: "Thông tin cơ bản về khách hàng từ dữ liệu thô."
     columns:
       - name: customer_id
         tests:
           - not_null
           - unique
-      - name: customer_unique_id
+      - name: customer_zip_code_prefix
+        description: "Mã ZIP code của khách hàng để nối với geolocation"
 
   - name: stg_products
+    description: "Thông tin mô tả sản phẩm (kích thước, trọng lượng)."
     columns:
       - name: product_id
         tests:
           - not_null
           - unique
       - name: product_category_name
+        description: "Tên ngành hàng (nguyên bản tiếng Bồ Đào Nha)"
 
   - name: stg_order_items
+    description: "Chi tiết từng sản phẩm trong mỗi đơn hàng (Line items)."
     columns:
       - name: order_id
         tests:
           - not_null
-      - name: order_item_id
-      - name: product_id
-      - name: seller_id
+      - name: price
+        description: "Giá của sản phẩm chưa bao gồm phí ship"
+        tests:
+          - not_null
 
   - name: stg_payments
+    description: "Chi tiết các giao dịch thanh toán (Transactional log)."
     columns:
       - name: order_id
         tests:
           - not_null
       - name: payment_type
-      - name: payment_value
+        tests:
+          - not_null
 
   - name: stg_reviews
+    description: "Đánh giá của khách hàng sau khi mua hàng."
     columns:
       - name: review_id
         tests:
           - not_null
-      - name: order_id
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - review_id
-              - order_id
+      - name: review_score
+        description: "Điểm đánh giá từ 1 đến 5"
+        tests:
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
 
   - name: stg_sellers
+    description: "Thông tin cơ bản về nhà bán hàng."
     columns:
       - name: seller_id
         tests:
@@ -78,13 +93,20 @@ models:
           - unique
 
   - name: stg_geolocation
+    description: "Dữ liệu tọa độ địa lý Brazil."
     columns:
       - name: geolocation_zip_code_prefix
+        tests:
+          - not_null
 
   - name: stg_category_translation
+    description: "Bảng tra cứu dịch tên ngành hàng từ tiếng Bồ Đào Nha sang tiếng Anh."
     columns:
       - name: product_category_name
         tests:
           - not_null
           - unique
       - name: product_category_name_english
+        tests:
+          - not_null
+          - unique

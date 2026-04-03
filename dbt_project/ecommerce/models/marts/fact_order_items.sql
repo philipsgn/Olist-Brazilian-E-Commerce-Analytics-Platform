@@ -4,14 +4,34 @@
     materialized='incremental',
     unique_key=['order_id', 'order_item_id'],
     incremental_strategy='delete+insert',
-    on_schema_change='sync_all_columns'
+    on_schema_change='sync_all_columns',
+    indexes=[
+      {'columns': ['order_id'], 'type': 'btree'},
+      {'columns': ['product_id'], 'type': 'btree'},
+      {'columns': ['order_date_id'], 'type': 'btree'},
+      {'columns': ['customer_id'], 'type': 'btree'}
+    ],
+    post_hook=[
+      "analyze {{ this }}"
+    ]
 ) }}
 
 with order_items as (
-    select * from {{ ref('stg_order_items') }}
+    select 
+        order_id, 
+        order_item_id, 
+        product_id, 
+        seller_id, 
+        price, 
+        freight_value 
+    from {{ ref('stg_order_items') }}
 ),
 orders as (
-    select * from {{ ref('stg_orders') }}
+    select 
+        order_id, 
+        customer_id, 
+        purchased_at 
+    from {{ ref('stg_orders') }}
 )
 
 select

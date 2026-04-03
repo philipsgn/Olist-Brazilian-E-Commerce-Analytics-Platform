@@ -1,7 +1,12 @@
 -- dbt/models/staging/stg_orders.sql
 
 with source as (
-    select *
+    select 
+        order_id, 
+        customer_id, 
+        order_status, 
+        order_purchase_timestamp, 
+        order_delivered_customer_date 
     from {{ source('raw', 'orders') }}
 ),
 renamed as (
@@ -15,5 +20,10 @@ renamed as (
     where order_id is not null
 )
 
-select *
+select
+    order_id,
+    customer_id,
+    order_status,
+    purchased_at,
+    delivered_at
 from renamed

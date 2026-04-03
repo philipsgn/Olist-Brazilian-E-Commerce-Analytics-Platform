@@ -1,0 +1,46 @@
+name: dbt_pipeline_ci_cd
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  run-dbt-tests:
+    runs-on: ubuntu-latest
+    env:
+      DBT_PROFILES_DIR: ./dbt_project
+      POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+      POSTGRES_USER: de_user
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_DB: ecommerce_db
+      POSTGRES_PORT: 5432
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          
+      - name: Install dbt
+        working-directory: ./dbt_project
+        run: |
+          pip install dbt-postgres==1.10.0
+          dbt deps --project-dir ./ecommerce
+          
+      - name: dbt Debug
+        working-directory: ./dbt_project
+        run: dbt debug --project-dir ./ecommerce --profiles-dir .
+        
+      - name: dbt Test (PR Only)
+        if: github.event_name == 'pull_request'
+        working-directory: ./dbt_project
+        run: dbt test --project-dir ./ecommerce --profiles-dir .
+        
+      - name: dbt Build (Push to Main)
+        if: github.ref == 'refs/heads/main'
+        working-directory: ./dbt_project
+        run: dbt build --project-dir ./ecommerce --profiles-dir .
