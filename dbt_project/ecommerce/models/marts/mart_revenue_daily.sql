@@ -24,6 +24,7 @@ dim_customers as (
 
 joined as (
     select
+        d.date_id as date_day,
         d.year,
         d.month,
         d.quarter,
@@ -42,6 +43,7 @@ joined as (
 )
 
 select
+    date_day,
     year,
     month,
     quarter,
@@ -62,5 +64,5 @@ select
     round(avg(price)::numeric, 2)          as avg_order_value
 
 from joined
-group by 1, 2, 3, 4, 5, 6
-order by year, month, product_category
+group by 1, 2, 3, 4, 5, 6, 7
+order by date_day, product_category
