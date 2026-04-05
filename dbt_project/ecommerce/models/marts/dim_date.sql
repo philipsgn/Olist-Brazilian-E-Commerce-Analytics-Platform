@@ -1,29 +1,31 @@
--- dbt/models/marts/dim_date.sql
+-- dim_date.sql
+-- Nâng cấp lên phiên bản "Production-grade": Tự động sinh lịch đến năm 2030
+-- Điều này đảm bảo các đơn hàng giả (simulated data) năm 2026-2030 đều được join thành công
 
-{{ config(
-    materialized='incremental',
-    unique_key='date_id',
-    incremental_strategy='delete+insert',
-    on_schema_change='sync_all_columns'
-) }}
+{{ config(materialized='table') }}
 
-with dates as (
-    select distinct date_trunc('day', purchased_at)::date as date_id
-    from {{ ref('stg_orders') }}
-    where purchased_at is not null
+with date_series as (
+    -- Dùng hàm generate_series của Postgres để tạo ra tất cả các ngày từ 2016 đến 2030
+    select 
+        generate_series(
+            '2016-01-01'::date, 
+            '2030-12-31'::date, 
+            '1 day'::interval
+        )::date as date_day
+),
+
+final as (
+    select
+        date_day as date_id,
+        extract(year from date_day) as year,
+        extract(month from date_day) as month,
+        extract(quarter from date_day) as quarter,
+        extract(day from date_day) as day,
+        extract(dow from date_day) as day_of_week,
+        to_char(date_day, 'Month') as month_name,
+        to_char(date_day, 'Day') as day_name,
+        case when extract(isodow from date_day) in (6, 7) then true else false end as is_weekend
+    from date_series
 )
 
-select
-    date_id,
-    extract(year from date_id) as year,
-    extract(month from date_id) as month,
-    extract(day from date_id) as day,
-    extract(quarter from date_id) as quarter,
-    case when extract(isodow from date_id) in (6, 7) then true else false end as is_weekend
-from dates
-
-{% if is_incremental() %}
-where date_id >= (
-    select coalesce(max(date_id), date '1900-01-01') from {{ this }}
-)
-{% endif %}
+select * from final
