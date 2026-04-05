@@ -89,6 +89,25 @@ def run_load_csv(**kwargs) -> str:
     
     return f"Success: Loaded data for {execution_date}"
 
+def run_simulation(**kwargs) -> str:
+    """
+    Kéo script simulate_data.py để tự động sinh thêm đơn hàng mới. 
+    Mỗi lần chạy sẽ đẻ ra 100 đơn hàng giả thời gian hiện tại.
+    """
+    import os
+    import sys
+    import importlib.util
+    
+    SIM_SCRIPT = "/opt/airflow/ingestion/simulate_data.py"
+    
+    spec = importlib.util.spec_from_file_location("simulate_data", SIM_SCRIPT)
+    if spec:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.simulate_new_orders(100)
+        return "SUCCESS: Generated 100 new orders."
+    return "FAILED: Script not found."
+
 # =============================================================================
 # 4. DAG DEFINITION
 # =============================================================================
@@ -106,6 +125,9 @@ with DAG(
 # 🏭 Production Data Pipeline ({ENVIRONMENT})
 This pipeline manages the end-to-end flow of E-commerce data from CSV to business-ready tables.
 
+### 🚀 Simulation Mode:
+This DAG now automatically generates **100 NEW ORDERS** daily before ingestion to simulate real-world data growth.
+
 ### 🛡️ Quality Gates:
 Tests are executed at **every layer**. A failure in `dbt test` will halt the pipeline to prevent data corruption.
 
@@ -113,6 +135,12 @@ Tests are executed at **every layer**. A failure in `dbt test` will halt the pip
 Expected data readiness by **8:00 AM UTC** (2 hours after start).
     """
 ) as dag:
+
+    # --- STEP 0: SIMULATE ---
+    generate_fake_data = PythonOperator(
+        task_id="generate_fake_data",
+        python_callable=run_simulation,
+    )
 
     # --- STEP 1: EXTRACT & LOAD ---
     load_csv = PythonOperator(
@@ -151,4 +179,4 @@ Expected data readiness by **8:00 AM UTC** (2 hours after start).
     )
 
     # --- LINEAGE ---
-    load_csv >> dbt_run_staging >> dbt_test_staging >> dbt_run_marts >> dbt_test_marts
+    generate_fake_data >> load_csv >> dbt_run_staging >> dbt_test_staging >> dbt_run_marts >> dbt_test_marts
