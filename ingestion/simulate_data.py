@@ -2,41 +2,67 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import os
-import random
 
-# Cấu hình đường dẫn đến thư mục data hiện tại của em
+# Cấu hình đường dẫn cố định đến thư mục data của em
 DATA_DIR = "c:\\Users\\TanPhat\\Documents\\IBM_DATA_ENGINEERING\\ecommerce-de-project\\data"
 
-def simulate_new_orders(num_rows=100):
+def simulate_new_orders(num_orders=100):
     """
-    Script này giả lập dữ liệu đơn hàng mới bằng cách lấy dữ liệu cũ 
-    và tịnh tiến thời gian về hiện tại.
+    Script Simulation 2.0: Đảm bảo tính toàn vẹn dữ liệu (Orders -> Items -> Payments)
     """
+    # 1. Đọc 3 file CSV chính
     orders_path = os.path.join(DATA_DIR, "olist_orders_dataset.csv")
-    
-    if not os.path.exists(orders_path):
-        print("Không tìm thấy file orders để giả lập!")
+    items_path = os.path.join(DATA_DIR, "olist_order_items_dataset.csv")
+    payments_path = os.path.join(DATA_DIR, "olist_order_payments_dataset.csv")
+
+    if not all(os.path.exists(p) for p in [orders_path, items_path, payments_path]):
+        print("🚨 Lỗi: Thiếu 1 trong 3 file CSV cần thiết!")
         return
 
-    # Đọc dữ liệu đơn hàng hiện có
-    df = pd.read_csv(orders_path)
+    df_orders = pd.read_csv(orders_path)
+    df_items = pd.read_csv(items_path)
+    df_payments = pd.read_csv(payments_path)
+
+    # 2. Chọn ngẫu nhiên [num_orders] đơn hàng mẫu để làm khuôn mẫu mô phỏng
+    # Chúng ta lấy các đơn hàng 'delivered' để mô phỏng cho thật
+    sample_orders = df_orders[df_orders['order_status'] == 'delivered'].sample(num_orders).copy()
     
-    # Lấy 100 dòng ngẫu nhiên để làm mẫu
-    sample_df = df.sample(num_rows).copy()
+    # Danh sách các order_id gốc để tìm items và payments tương ứng
+    original_order_ids = sample_orders['order_id'].tolist()
     
-    # Thay đổi ID để không bị trùng (Primary Key)
-    sample_df['order_id'] = [f"fake_{os.urandom(8).hex()}" for _ in range(num_rows)]
-    
-    # Tịnh tiến thời gian: Cho tất cả đơn hàng mới xảy ra vào HÔM NAY
+    # 3. Tạo mapping ID mới (Fake ID) để duy trì mối quan hệ (Relational Mapping)
+    new_id_map = {old: f"fake_{os.urandom(8).hex()}" for old in original_order_ids}
+
+    # --- XỬ LÝ BẢNG ORDERS ---
+    sample_orders['order_id'] = sample_orders['order_id'].map(new_id_map)
     now = datetime.now()
-    sample_df['order_purchase_timestamp'] = now.strftime('%Y-%m-%d %H:%M:%S')
-    sample_df['order_approved_at'] = (now + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
-    sample_df['order_status'] = 'delivered'
-    
-    # Append dữ liệu giả vào file CSV thật
-    # mode='a' để cộng thêm vào file, không xóa dữ liệu cũ
-    sample_df.to_csv(orders_path, mode='a', header=False, index=False)
-    print(f"✅ Đã bơm thêm {num_rows} đơn hàng giả vào {orders_path}")
+    # Giả lập thời gian mua hàng là HÔM NAY
+    sample_orders['order_purchase_timestamp'] = now.strftime('%Y-%m-%d %H:%M:%S')
+    sample_orders['order_approved_at'] = (now + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+    sample_orders['order_delivered_carrier_date'] = (now + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
+    sample_orders['order_delivered_customer_date'] = (now + timedelta(days=3)).strftime('%Y-%m-%d %H:%M:%S')
+    sample_orders['order_estimated_delivery_date'] = (now + timedelta(days=7)).strftime('%Y-%m-%d %H:%M:%S')
+
+    # --- XỬ LÝ BẢNG ITEMS ---
+    # Tìm tất cả items thuộc về các đơn hàng gốc đã chọn
+    new_items = df_items[df_items['order_id'].isin(original_order_ids)].copy()
+    new_items['order_id'] = new_items['order_id'].map(new_id_map)
+
+    # --- XỬ LÝ BẢNG PAYMENTS ---
+    # Tìm tất cả payments thuộc về các đơn hàng gốc đã chọn
+    new_payments = df_payments[df_payments['order_id'].isin(original_order_ids)].copy()
+    new_payments['order_id'] = new_payments['order_id'].map(new_id_map)
+
+    # 4. Ghi nối (Append) vào các file CSV gốc
+    sample_orders.to_csv(orders_path, mode='a', header=False, index=False)
+    new_items.to_csv(items_path, mode='a', header=False, index=False)
+    new_payments.to_csv(payments_path, mode='a', header=False, index=False)
+
+    print(f"✅ PRODUCTION SIMULATION COMPLETE:")
+    print(f"   -> Created {num_orders} new Orders (Integrity Linked)")
+    print(f"   -> Added {len(new_items)} Order Items")
+    print(f"   -> Added {len(new_payments)} Payments")
+    print(f"   -> Timestamps set to: {now.strftime('%Y-%m-%d')}")
 
 if __name__ == "__main__":
     simulate_new_orders(100)
