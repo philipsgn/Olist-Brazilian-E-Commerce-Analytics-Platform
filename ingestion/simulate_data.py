@@ -3,8 +3,8 @@ import numpy as np
 from datetime import datetime, timedelta
 import os
 
-# Cấu hình đường dẫn cố định đến thư mục data của em
-DATA_DIR = "c:\\Users\\TanPhat\\Documents\\IBM_DATA_ENGINEERING\\ecommerce-de-project\\data"
+# Tự động nhận diện đường dẫn (Local hoặc Docker)
+DATA_DIR = os.environ.get("DATA_DIR", "/opt/airflow/data")
 
 def simulate_new_orders(num_orders=100):
     """
