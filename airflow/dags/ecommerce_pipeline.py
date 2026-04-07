@@ -10,6 +10,13 @@ PRODUCTION FEATURES:
 2. Quality Gating (dbt tests block downstream tasks)
 3. Advanced Monitoring (SLAs, Retries, Timeout, Slack Notifications)
 4. Robust Ingestion (Python-based with localized module loading)
+5. Schema Health Check (verify raw tables before ingestion)
+
+FILE DEPENDENCIES:
+  ingestion/init.sql         → DDL definitions for raw.* tables
+  ingestion/init_airflow.sql → Airflow DB setup + Variable/Connection docs
+  db/init/010_ecommerce_db.sql → Auto-run by Postgres on first startup
+  db/init/020_init_airflow.sql → Auto-run by Postgres on first startup
 =============================================================================
 """
 
@@ -108,6 +115,53 @@ def run_simulation(**kwargs) -> str:
         return "SUCCESS: Generated 100 new orders."
     return "FAILED: Script not found."
 
+
+def verify_raw_schema(**kwargs) -> str:
+    """
+    Health-check task: Xác minh tất cả 9 bảng raw.* đã được tạo
+    bởi db/init/010_ecommerce_db.sql trước khi bắt đầu ingestion.
+
+    Nếu thiếu bảng nào → raise Exception → pipeline dừng ngay,
+    không để lỗi UndefinedTable xảy ra giữa chừng.
+
+    Liên kết:
+      - Schema được định nghĩa trong: ingestion/init.sql
+      - Auto-created bởi:            db/init/010_ecommerce_db.sql
+    """
+    import sqlalchemy
+    from sqlalchemy import text
+
+    # Danh sách bảng CẦN TỒN TẠI — khớp với DATASET_CONFIG trong load_csv.py
+    REQUIRED_TABLES = [
+        "orders", "customers", "order_items", "payments",
+        "reviews", "products", "sellers", "geolocation",
+        "category_translation",
+    ]
+
+    engine = sqlalchemy.create_engine(DB_URI)
+    missing = []
+
+    with engine.connect() as conn:
+        for table in REQUIRED_TABLES:
+            result = conn.execute(text(
+                "SELECT EXISTS ("
+                "  SELECT 1 FROM information_schema.tables"
+                "  WHERE table_schema = 'raw' AND table_name = :tbl"
+                ")"
+            ), {"tbl": table})
+            exists = result.scalar()
+            if not exists:
+                missing.append(f"raw.{table}")
+
+    if missing:
+        raise Exception(
+            f"❌ Schema health check FAILED. Missing tables: {missing}. "
+            f"Run db/init/010_ecommerce_db.sql or restart the postgres container."
+        )
+
+    logging.info(f"✅ Schema health check PASSED. All {len(REQUIRED_TABLES)} raw tables exist.")
+    return f"OK: {len(REQUIRED_TABLES)} tables verified in raw schema."
+
 # =============================================================================
 # 4. DAG DEFINITION
 # =============================================================================
@@ -136,7 +190,20 @@ Expected data readiness by **8:00 AM UTC** (2 hours after start).
     """
 ) as dag:
 
-    # --- STEP 0: SIMULATE ---
+    # --- STEP 0A: SCHEMA HEALTH CHECK ---
+    # Xác minh raw schema đã được init bởi db/init/010_ecommerce_db.sql
+    # Nếu thiếu bảng → pipeline dừng ngay, không chạy ingestion
+    check_raw_schema = PythonOperator(
+        task_id="verify_raw_schema",
+        python_callable=verify_raw_schema,
+        doc_md="""
+        Kiểm tra 9 bảng raw.* đã tồn tại trong PostgreSQL.
+        **Nguồn schema:** `ingestion/init.sql` (auto-mount qua `db/init/010_ecommerce_db.sql`).
+        Nếu FAIL → kiểm tra postgres container hoặc chạy lại init.sql.
+        """,
+    )
+
+    # --- STEP 0B: SIMULATE ---
     generate_fake_data = PythonOperator(
         task_id="generate_fake_data",
         python_callable=run_simulation,
@@ -179,4 +246,6 @@ Expected data readiness by **8:00 AM UTC** (2 hours after start).
     )
 
     # --- LINEAGE ---
-    generate_fake_data >> load_csv >> dbt_run_staging >> dbt_test_staging >> dbt_run_marts >> dbt_test_marts
+    # verify_raw_schema chạy song song với generate_fake_data
+    # load_csv chỉ chạy khi CẢ HAI task trên đều thành công
+    [check_raw_schema, generate_fake_data] >> load_csv >> dbt_run_staging >> dbt_test_staging >> dbt_run_marts >> dbt_test_marts

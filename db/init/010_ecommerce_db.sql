@@ -1,5 +1,10 @@
 -- =============================================
--- KHỞI TẠO DATABASE CHO ECOMMERCE DE PROJECT
+-- db/init/010_ecommerce_db.sql
+-- Postgres chạy file này ĐẦU TIÊN khi khởi tạo container.
+-- Nội dung: Tạo raw/marts schema + tất cả bảng dữ liệu.
+--
+-- File gốc: ingestion/init.sql
+-- Được copy vào đây để Postgres auto-run qua docker-entrypoint-initdb.d
 -- =============================================
 
 -- 1. Tạo Schema
@@ -17,41 +22,40 @@ DROP TABLE IF EXISTS raw.sellers CASCADE;
 DROP TABLE IF EXISTS raw.geolocation CASCADE;
 DROP TABLE IF EXISTS raw.category_translation CASCADE;
 
--- 3. Tạo các bảng với tên KHỚP HOÀN TOÀN với script Python
+-- 3. Tạo các bảng với tên KHỚP HOÀN TOÀN với script Python (load_csv.py)
 
 CREATE TABLE raw.orders (
-    order_id         VARCHAR(50),
-    customer_id      VARCHAR(50),
-    order_status     VARCHAR(20),
-    order_purchase_timestamp TIMESTAMP,
-    order_approved_at         TIMESTAMP,
-    order_delivered_carrier_date  TIMESTAMP,
-    order_delivered_customer_date TIMESTAMP,
-    order_estimated_delivery_date TIMESTAMP,
-    loaded_at        TIMESTAMP DEFAULT NOW()
+    order_id                         VARCHAR(50),
+    customer_id                      VARCHAR(50),
+    order_status                     VARCHAR(20),
+    order_purchase_timestamp         TIMESTAMP,
+    order_approved_at                TIMESTAMP,
+    order_delivered_carrier_date     TIMESTAMP,
+    order_delivered_customer_date    TIMESTAMP,
+    order_estimated_delivery_date    TIMESTAMP,
+    loaded_at                        TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE raw.customers (
-    customer_id              VARCHAR(50),
-    customer_unique_id       VARCHAR(50),
-    customer_zip_code_prefix VARCHAR(10),
-    customer_city            VARCHAR(100),
-    customer_state           VARCHAR(5),
-    loaded_at                TIMESTAMP DEFAULT NOW()
+    customer_id               VARCHAR(50),
+    customer_unique_id        VARCHAR(50),
+    customer_zip_code_prefix  VARCHAR(10),
+    customer_city             VARCHAR(100),
+    customer_state            VARCHAR(5),
+    loaded_at                 TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE raw.order_items (
-    order_id            VARCHAR(50),
-    order_item_id       INTEGER,
-    product_id          VARCHAR(50),
-    seller_id           VARCHAR(50),
-    shipping_limit_date TIMESTAMP,
-    price               NUMERIC(10,2),
-    freight_value       NUMERIC(10,2),
-    loaded_at           TIMESTAMP DEFAULT NOW()
+    order_id             VARCHAR(50),
+    order_item_id        INTEGER,
+    product_id           VARCHAR(50),
+    seller_id            VARCHAR(50),
+    shipping_limit_date  TIMESTAMP,
+    price                NUMERIC(10,2),
+    freight_value        NUMERIC(10,2),
+    loaded_at            TIMESTAMP DEFAULT NOW()
 );
 
--- Tên bảng cũ: order_payments -> Sửa thành: payments
 CREATE TABLE raw.payments (
     order_id              VARCHAR(50),
     payment_sequential    INTEGER,
@@ -61,7 +65,6 @@ CREATE TABLE raw.payments (
     loaded_at             TIMESTAMP DEFAULT NOW()
 );
 
--- Tên bảng cũ: order_reviews -> Sửa thành: reviews
 CREATE TABLE raw.reviews (
     review_id               VARCHAR(50),
     order_id                VARCHAR(50),
@@ -103,11 +106,10 @@ CREATE TABLE raw.geolocation (
     loaded_at                    TIMESTAMP DEFAULT NOW()
 );
 
--- Tên bảng cũ: product_category_translation -> Sửa thành: category_translation
 CREATE TABLE raw.category_translation (
     product_category_name          VARCHAR(100),
     product_category_name_english  VARCHAR(100),
     loaded_at                      TIMESTAMP DEFAULT NOW()
 );
 
-SELECT 'Database tables created with matching names!' AS status;
+SELECT 'ecommerce_db: raw schema tables created successfully!' AS status;
