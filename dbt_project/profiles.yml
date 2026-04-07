@@ -1,15 +1,35 @@
+# Senior AWS Data Engineer (7+ years) Production-Ready Profiles
+# Strategy: Multi-environment with hardened security and performance tuning.
+
 ecommerce:
-  target: dev
+  target: prod
   outputs:
+    # --- PRODUCTION ENVIRONMENT (AWS RDS Singapore) ---
+    prod:
+      type: postgres
+      host: "{{ env_var('RDS_HOST', 'olist-de-db.c34iaimu4kqz.ap-southeast-1.rds.amazonaws.com') }}"
+      port: 5432
+      user: "{{ env_var('RDS_USER', 'de_user') }}"
+      password: "{{ env_var('DBT_ENV_SECRET_RDS_PASSWORD', 'de_password') }}"
+      dbname: "{{ env_var('RDS_DBNAME', 'ecommerce_db') }}"
+      schema: analytics
+      threads: 8
+      
+      # [SECURITY] SSL verify-full ensures we are talking to the ACTUAL AWS RDS instance
+      sslmode: verify-full
+      sslrootcert: "../../global-bundle.pem"
+
+      # [RELIABILITY] Keepalives prevent connections from timing out by Firewall/Gateway
+      keepalives_idle: 60 
+
+    # --- DEVELOPMENT ENVIRONMENT (Local/Staging) ---
     dev:
       type: postgres
-      host: "{{ env_var('POSTGRES_HOST', 'postgres') }}"
-      user: "{{ env_var('POSTGRES_USER', 'de_user') }}"
-      password: "{{ env_var('POSTGRES_PASSWORD', 'de_password') }}"
-      port: 5432            # The internal Docker port for Postgres, not the exposed host port
-      dbname: "{{ env_var('POSTGRES_DB', 'ecommerce_db') }}"
-      schema: raw           # Fallback schema; proper schema handled by target/macro config
+      host: localhost
+      port: 5432
+      user: de_user
+      password: "{{ env_var('DB_PASSWORD', 'de_password') }}"
+      dbname: ecommerce_db
+      schema: dev_pht
       threads: 4
       keepalives_idle: 0
-      # generate_schema_name macro override ensures dbt puts objects in clean schemas 
-      # instead of raw_custom_schema by ignoring the default behavior.
