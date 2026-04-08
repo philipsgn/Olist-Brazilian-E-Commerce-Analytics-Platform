@@ -3,11 +3,15 @@ from __future__ import annotations
 import os
 import time
 import io
+import logging
 from pathlib import Path
 
 import pandas as pd
 import boto3
 from sqlalchemy import create_engine, text
+
+# Module-level logger
+logger = logging.getLogger(__name__)
 
 # --- Configuration ---
 # Map CSV filename -> target table name
@@ -24,15 +28,34 @@ DATASET_CONFIG = {
 }
 
 # --- Hybrid Ingestion Strategy (Local + Cloud) ---
-DATA_DIR = Path("data")
+DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 S3_BUCKET = os.getenv("S3_BUCKET", "olist-de-tanphat-2026")
 S3_PREFIX = "raw/csv/"
 USE_S3 = os.getenv("USE_S3", "false").lower() == "true"
 
-DB_URI = os.getenv(
-    "DB_URI",
-    "postgresql://de_user:de_password@127.0.0.1:5433/ecommerce_db",
-)
+# ---------------------------------------------------------------------------
+# DB Connection — assembled from individual env vars.
+# Defaults are suitable for the local docker-compose stack.
+# Override on AWS EC2 by setting POSTGRES_HOST, POSTGRES_PORT, etc. in the
+# environment or via AWS Secrets Manager / Parameter Store injection.
+# ---------------------------------------------------------------------------
+def _build_db_uri() -> str:
+    pg_user     = os.getenv("POSTGRES_USER",     "de_user")
+    pg_password = os.getenv("POSTGRES_PASSWORD", "de_password")
+    pg_host     = os.getenv("POSTGRES_HOST",     "127.0.0.1")  # Local default
+    pg_port     = os.getenv("POSTGRES_PORT",     "5433")        # Exposed host port
+    pg_db       = os.getenv("POSTGRES_DB",       "ecommerce_db")
+    uri = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
+    logger.info(
+        "[load_csv] DB → host=%s port=%s db=%s user=%s",
+        pg_host, pg_port, pg_db, pg_user,
+    )
+    return uri
+
+
+# Evaluated once at import time (consistent with original behaviour)
+DB_URI = os.getenv("DB_URI") or _build_db_uri()
+
 SCHEMA = "raw"
 
 # Retry settings (simple, minimal)
@@ -41,7 +64,28 @@ RETRY_SLEEP_SEC = 2
 
 
 def get_engine():
-    return create_engine(DB_URI)
+    """Return a SQLAlchemy engine.
+    Wraps creation in try-except so a bad host/password produces a clear log
+    entry instead of a raw traceback.
+    """
+    pg_host = os.getenv("POSTGRES_HOST", "127.0.0.1")
+    pg_db   = os.getenv("POSTGRES_DB",   "ecommerce_db")
+    logger.info("[load_csv] Creating engine → host=%s db=%s", pg_host, pg_db)
+    try:
+        engine = create_engine(DB_URI)
+        # Lightweight connectivity probe (does NOT open a real connection yet,
+        # but raises immediately if the URL is malformed).
+        return engine
+    except Exception as exc:
+        logger.error(
+            "[load_csv] ❌ Failed to create DB engine!\n"
+            "  host : %s\n"
+            "  db   : %s\n"
+            "  Verify POSTGRES_HOST / POSTGRES_PASSWORD env vars.\n"
+            "  Error: %s",
+            pg_host, pg_db, exc,
+        )
+        raise
 
 
 def read_dataframe(file_path: Path) -> pd.DataFrame:

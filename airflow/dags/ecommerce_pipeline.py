@@ -28,6 +28,9 @@ import sys
 import importlib.util
 import logging
 
+# Configure module-level logger
+logger = logging.getLogger(__name__)
+
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
@@ -44,7 +47,33 @@ ENVIRONMENT = Variable.get("ENVIRONMENT", "dev")
 DBT_PROJECT_DIR = "/opt/airflow/dbt_project/ecommerce"
 DBT_PROFILES_DIR = "/opt/airflow/dbt_project"
 INGESTION_SCRIPT = "/opt/airflow/ingestion/load_csv.py"
-DB_URI = "postgresql://de_user:de_password@postgres:5432/ecommerce_db"
+
+# ---------------------------------------------------------------------------
+# DB Connection: assembled from env vars — never hardcoded.
+# Local Docker defaults map to the service name 'postgres' (docker-compose).
+# On AWS EC2, set these env vars (or use AWS Secrets Manager injection).
+# ---------------------------------------------------------------------------
+def get_db_uri() -> str:
+    """Build the PostgreSQL connection URI from environment variables.
+
+    Priority: env var → sane local-Docker default.
+    Logs the resolved host/db so connection issues surface immediately.
+    """
+    pg_user     = os.getenv("POSTGRES_USER",     "de_user")
+    pg_password = os.getenv("POSTGRES_PASSWORD", "de_password")
+    pg_host     = os.getenv("POSTGRES_HOST",     "postgres")   # Docker service name
+    pg_port     = os.getenv("POSTGRES_PORT",     "5432")        # Internal Docker port
+    pg_db       = os.getenv("POSTGRES_DB",       "ecommerce_db")
+
+    uri = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
+    logger.info(
+        "[DB CONFIG] Resolved connection → host=%s port=%s db=%s user=%s",
+        pg_host, pg_port, pg_db, pg_user,
+    )
+    return uri
+
+
+DB_URI = get_db_uri()
 
 # Production-standard defaults
 default_args = {
@@ -76,24 +105,33 @@ def send_failure_alert(context):
 def run_load_csv(**kwargs) -> str:
     """
     Orchestrates the ingestion of CSV files into the 'raw' schema.
+    Forwards all POSTGRES_* env vars so load_csv.py builds the correct URI.
     """
     execution_date = kwargs.get("ds", "unknown")
-    logging.info(f"[{execution_date}] Starting CSV ingestion in {ENVIRONMENT} environment...")
+    logger.info("[%s] Starting CSV ingestion in %s environment...", execution_date, ENVIRONMENT)
 
-    os.environ["DB_URI"] = DB_URI
-    os.environ["DATA_DIR"] = "/opt/airflow/data"
+    # Pass DB credentials explicitly — load_csv.py reads these via os.getenv()
+    os.environ.setdefault("POSTGRES_USER",     os.getenv("POSTGRES_USER",     "de_user"))
+    os.environ.setdefault("POSTGRES_PASSWORD", os.getenv("POSTGRES_PASSWORD", "de_password"))
+    os.environ.setdefault("POSTGRES_HOST",     os.getenv("POSTGRES_HOST",     "postgres"))
+    os.environ.setdefault("POSTGRES_PORT",     os.getenv("POSTGRES_PORT",     "5432"))
+    os.environ.setdefault("POSTGRES_DB",       os.getenv("POSTGRES_DB",       "ecommerce_db"))
+    # DATA_DIR: prefer env var, fall back to container path
+    os.environ["DATA_DIR"] = os.getenv("DATA_DIR", "/opt/airflow/data")
+    logger.info("[run_load_csv] DATA_DIR=%s  DB_HOST=%s",
+                os.environ["DATA_DIR"], os.getenv("POSTGRES_HOST", "postgres"))
 
     # Dynamically load the ingestion script
     spec = importlib.util.spec_from_file_location("load_csv", INGESTION_SCRIPT)
     if spec is None:
         raise FileNotFoundError(f"Missing ingestion script: {INGESTION_SCRIPT}")
-        
+
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
     # Invoke the core ingestion logic
     module.run_ingestion()
-    
+
     return f"Success: Loaded data for {execution_date}"
 
 def run_simulation(**kwargs) -> str:
@@ -118,40 +156,49 @@ def run_simulation(**kwargs) -> str:
 
 def verify_raw_schema(**kwargs) -> str:
     """
-    Health-check task: Xác minh tất cả 9 bảng raw.* đã được tạo
-    bởi db/init/010_ecommerce_db.sql trước khi bắt đầu ingestion.
-
-    Nếu thiếu bảng nào → raise Exception → pipeline dừng ngay,
-    không để lỗi UndefinedTable xảy ra giữa chừng.
-
-    Liên kết:
-      - Schema được định nghĩa trong: ingestion/init.sql
-      - Auto-created bởi:            db/init/010_ecommerce_db.sql
+    Health-check task: Xác minh tất cả 9 bảng raw.* tồn tại trước khi ingestion.
+    Wrapped trong try-except để log lỗi kết nối rõ ràng thay vì crash bí ẩn.
     """
     import sqlalchemy
     from sqlalchemy import text
 
-    # Danh sách bảng CẦN TỒN TẠI — khớp với DATASET_CONFIG trong load_csv.py
     REQUIRED_TABLES = [
         "orders", "customers", "order_items", "payments",
         "reviews", "products", "sellers", "geolocation",
         "category_translation",
     ]
 
-    engine = sqlalchemy.create_engine(DB_URI)
-    missing = []
+    pg_host = os.getenv("POSTGRES_HOST", "postgres")
+    pg_db   = os.getenv("POSTGRES_DB",   "ecommerce_db")
+    logger.info("[verify_raw_schema] Connecting to host=%s db=%s", pg_host, pg_db)
 
-    with engine.connect() as conn:
-        for table in REQUIRED_TABLES:
-            result = conn.execute(text(
-                "SELECT EXISTS ("
-                "  SELECT 1 FROM information_schema.tables"
-                "  WHERE table_schema = 'raw' AND table_name = :tbl"
-                ")"
-            ), {"tbl": table})
-            exists = result.scalar()
-            if not exists:
-                missing.append(f"raw.{table}")
+    try:
+        engine = sqlalchemy.create_engine(DB_URI)
+        missing = []
+
+        with engine.connect() as conn:
+            for table in REQUIRED_TABLES:
+                result = conn.execute(text(
+                    "SELECT EXISTS ("
+                    "  SELECT 1 FROM information_schema.tables"
+                    "  WHERE table_schema = 'raw' AND table_name = :tbl"
+                    ")"
+                ), {"tbl": table})
+                exists = result.scalar()
+                if not exists:
+                    missing.append(f"raw.{table}")
+
+    except sqlalchemy.exc.OperationalError as exc:
+        # OperationalError = wrong host, wrong port, wrong password, network issue
+        logger.error(
+            "[verify_raw_schema] ❌ Cannot connect to PostgreSQL!\n"
+            "  host     : %s\n"
+            "  db       : %s\n"
+            "  Check POSTGRES_HOST / POSTGRES_PASSWORD env vars or RDS Security Group.\n"
+            "  Original error: %s",
+            pg_host, pg_db, exc,
+        )
+        raise
 
     if missing:
         raise Exception(
@@ -159,7 +206,7 @@ def verify_raw_schema(**kwargs) -> str:
             f"Run db/init/010_ecommerce_db.sql or restart the postgres container."
         )
 
-    logging.info(f"✅ Schema health check PASSED. All {len(REQUIRED_TABLES)} raw tables exist.")
+    logger.info("✅ Schema health check PASSED. All %d raw tables exist.", len(REQUIRED_TABLES))
     return f"OK: {len(REQUIRED_TABLES)} tables verified in raw schema."
 
 # =============================================================================
@@ -215,18 +262,28 @@ Expected data readiness by **8:00 AM UTC** (2 hours after start).
         python_callable=run_load_csv,
     )
 
+    # Env vars forwarded into every dbt BashOperator so profiles.yml env_var() calls work
+    _dbt_env = {
+        "PATH":              "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
+        "POSTGRES_USER":     os.getenv("POSTGRES_USER",     "de_user"),
+        "POSTGRES_PASSWORD": os.getenv("POSTGRES_PASSWORD", "de_password"),
+        "POSTGRES_HOST":     os.getenv("POSTGRES_HOST",     "postgres"),
+        "POSTGRES_PORT":     os.getenv("POSTGRES_PORT",     "5432"),
+        "POSTGRES_DB":       os.getenv("POSTGRES_DB",       "ecommerce_db"),
+    }
+
     # --- STEP 2: STAGING (VIEW LAYER) ---
     dbt_run_staging = BashOperator(
         task_id="dbt_run_staging",
         bash_command=f"dbt run --select staging.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}",
-        env={"PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin"},
+        env=_dbt_env,
         append_env=True,
     )
 
     dbt_test_staging = BashOperator(
         task_id="dbt_test_staging",
         bash_command=f"dbt test --select staging.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}",
-        env={"PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin"},
+        env=_dbt_env,
         append_env=True,
     )
 
@@ -234,14 +291,14 @@ Expected data readiness by **8:00 AM UTC** (2 hours after start).
     dbt_run_marts = BashOperator(
         task_id="dbt_run_marts",
         bash_command=f"dbt run --select marts.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}",
-        env={"PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin"},
+        env=_dbt_env,
         append_env=True,
     )
 
     dbt_test_marts = BashOperator(
         task_id="dbt_test_marts",
         bash_command=f"dbt test --select marts.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}",
-        env={"PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin"},
+        env=_dbt_env,
         append_env=True,
     )
 

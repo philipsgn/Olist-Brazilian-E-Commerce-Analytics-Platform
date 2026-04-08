@@ -2,9 +2,15 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import os
+import logging
+
+# Module-level logger
+logger = logging.getLogger(__name__)
 
 # Tự động nhận diện đường dẫn (Local hoặc Docker)
+# Override: set DATA_DIR env var before running (e.g. on EC2 or inside Airflow).
 DATA_DIR = os.environ.get("DATA_DIR", "/opt/airflow/data")
+logger.info("[simulate_data] DATA_DIR resolved to: %s", DATA_DIR)
 
 def simulate_new_orders(num_orders=100):
     """
@@ -65,4 +71,18 @@ def simulate_new_orders(num_orders=100):
     print(f"   -> Timestamps set to: {now.strftime('%Y-%m-%d')}")
 
 if __name__ == "__main__":
+    # When running standalone (e.g. python simulate_data.py on local or EC2),
+    # auto-load the .env file in the project root so POSTGRES_* vars are available
+    # without manually exporting them in the shell.
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()  # looks for .env starting from cwd upward
+        logger.info("[simulate_data] .env loaded via python-dotenv")
+    except ImportError:
+        pass  # On production containers dotenv is not needed; env vars are injected
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     simulate_new_orders(100)
