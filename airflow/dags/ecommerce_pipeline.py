@@ -11,12 +11,21 @@ PRODUCTION FEATURES:
 3. Advanced Monitoring (SLAs, Retries, Timeout, Slack Notifications)
 4. Robust Ingestion (Python-based with localized module loading)
 5. Schema Health Check (verify raw tables before ingestion)
+6. Real-time Streaming Ingestion (S3 → PostgreSQL via Kinesis Firehose)
 
 FILE DEPENDENCIES:
-  ingestion/init.sql         → DDL definitions for raw.* tables
-  ingestion/init_airflow.sql → Airflow DB setup + Variable/Connection docs
-  db/init/010_ecommerce_db.sql → Auto-run by Postgres on first startup
-  db/init/020_init_airflow.sql → Auto-run by Postgres on first startup
+  ingestion/init.sql            → DDL for raw.* tables (incl. streaming_orders)
+  ingestion/load_streaming.py   → Checkpoint-based streaming ingestion
+  ingestion/init_airflow.sql    → Airflow DB setup + Variable/Connection docs
+  db/init/010_ecommerce_db.sql  → Auto-run by Postgres on first startup
+  db/init/020_init_airflow.sql  → Auto-run by Postgres on first startup
+
+PIPELINE LINEAGE:
+  [verify_raw_schema] ──┐
+                        ├──► [extract_load_raw] ──► [load_streaming_orders]
+  [generate_fake_data] ─┘         (CSV batch)           (S3 streaming)
+                                                              │
+                          [dbt staging → test → marts → test]◄┘
 =============================================================================
 """
 
@@ -44,9 +53,10 @@ from airflow.models import Variable
 ENVIRONMENT = Variable.get("ENVIRONMENT", "dev")
 
 # Directory paths internal to the Docker container
-DBT_PROJECT_DIR = "/opt/airflow/dbt_project/ecommerce"
-DBT_PROFILES_DIR = "/opt/airflow/dbt_project"
-INGESTION_SCRIPT = "/opt/airflow/ingestion/load_csv.py"
+DBT_PROJECT_DIR      = "/opt/airflow/dbt_project/ecommerce"
+DBT_PROFILES_DIR     = "/opt/airflow/dbt_project"
+INGESTION_SCRIPT     = "/opt/airflow/ingestion/load_csv.py"
+STREAMING_SCRIPT     = "/opt/airflow/ingestion/load_streaming.py"
 
 # ---------------------------------------------------------------------------
 # DB Connection: assembled from env vars — never hardcoded.
@@ -154,6 +164,29 @@ def run_simulation(**kwargs) -> str:
     return "FAILED: Script not found."
 
 
+def run_streaming_load(**kwargs) -> str:
+    """
+    Task: Load streaming orders từ S3 raw/streaming/ vào raw.streaming_orders.
+    Dùng checkpoint-based deduplication — idempotent, safe to retry.
+    Env vars POSTGRES_* và S3_BUCKET được forward tự động từ container environment.
+    """
+    execution_date = kwargs.get("ds", "unknown")
+    logger.info(
+        "[%s] Starting streaming ingestion in %s environment...",
+        execution_date, ENVIRONMENT,
+    )
+
+    spec = importlib.util.spec_from_file_location("load_streaming", STREAMING_SCRIPT)
+    if spec is None:
+        raise FileNotFoundError(f"Missing streaming script: {STREAMING_SCRIPT}")
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.run_streaming_ingestion()
+
+    return f"Streaming ingestion complete for {execution_date}"
+
+
 def verify_raw_schema(**kwargs) -> str:
     """
     Health-check task: Xác minh tất cả 9 bảng raw.* tồn tại trước khi ingestion.
@@ -166,6 +199,7 @@ def verify_raw_schema(**kwargs) -> str:
         "orders", "customers", "order_items", "payments",
         "reviews", "products", "sellers", "geolocation",
         "category_translation",
+        "streaming_orders",         # Phase 4 — Kinesis Firehose → S3 → PG
     ]
 
     pg_host = os.getenv("POSTGRES_HOST", "postgres")
@@ -224,13 +258,17 @@ with DAG(
     on_failure_callback=send_failure_alert,
     doc_md=f"""
 # 🏭 Production Data Pipeline ({ENVIRONMENT})
-This pipeline manages the end-to-end flow of E-commerce data from CSV to business-ready tables.
+This pipeline manages the end-to-end flow of E-commerce data from CSV + real-time streaming to business-ready tables.
 
-### 🚀 Simulation Mode:
-This DAG now automatically generates **100 NEW ORDERS** daily before ingestion to simulate real-world data growth.
+### 🚀 Data Sources:
+- **Batch CSV** → `raw.*` tables via `load_csv.py`
+- **Streaming (Kinesis Firehose → S3 GZIP)** → `raw.streaming_orders` via `load_streaming.py`
+
+### 🔄 Simulation Mode:
+This DAG automatically generates **100 NEW ORDERS** daily (Lambda: olist-order-simulator, 10 orders/min).
 
 ### 🛡️ Quality Gates:
-Tests are executed at **every layer**. A failure in `dbt test` will halt the pipeline to prevent data corruption.
+Tests executed at **every dbt layer**. A failure in `dbt test` halts the pipeline to prevent data corruption.
 
 ### 📈 Service Level Agreement (SLA):
 Expected data readiness by **8:00 AM UTC** (2 hours after start).
@@ -256,10 +294,26 @@ Expected data readiness by **8:00 AM UTC** (2 hours after start).
         python_callable=run_simulation,
     )
 
-    # --- STEP 1: EXTRACT & LOAD ---
+    # --- STEP 1A: EXTRACT & LOAD (Batch CSV) ---
     load_csv = PythonOperator(
         task_id="extract_load_raw",
         python_callable=run_load_csv,
+        doc_md="Load 9 CSV datasets from local/S3 into raw.* tables (TRUNCATE + append).",
+    )
+
+    # --- STEP 1B: LOAD STREAMING ORDERS (S3 → PostgreSQL) ---
+    # Chạy SAU batch CSV để đảm bảo schema đã sẵn sàng.
+    # Checkpoint-based: chỉ load file mới, không load lại.
+    load_streaming = PythonOperator(
+        task_id="load_streaming_orders",
+        python_callable=run_streaming_load,
+        retries=2,
+        retry_delay=timedelta(minutes=2),
+        doc_md="""
+        Load streaming orders từ S3 `raw/streaming/` (Kinesis Firehose GZIP) vào
+        `raw.streaming_orders`. Checkpoint lưu tại `/tmp/streaming_checkpoint.txt`.
+        **Nguồn:** Lambda `olist-order-simulator` → Kinesis → Firehose → S3.
+        """,
     )
 
     # Env vars forwarded into every dbt BashOperator so profiles.yml env_var() calls work
@@ -303,6 +357,18 @@ Expected data readiness by **8:00 AM UTC** (2 hours after start).
     )
 
     # --- LINEAGE ---
-    # verify_raw_schema chạy song song với generate_fake_data
-    # load_csv chỉ chạy khi CẢ HAI task trên đều thành công
-    [check_raw_schema, generate_fake_data] >> load_csv >> dbt_run_staging >> dbt_test_staging >> dbt_run_marts >> dbt_test_marts
+    # Phase 1: Parallel pre-checks
+    #   verify_raw_schema + generate_fake_data ──► extract_load_raw (batch CSV)
+    # Phase 2: Streaming ingestion chạy sau batch (schema đã ready)
+    #   extract_load_raw ──► load_streaming_orders
+    # Phase 3: dbt transformations (chỉ chạy khi cả batch + streaming thành công)
+    #   load_streaming_orders ──► dbt staging ──► test ──► marts ──► test
+    (
+        [check_raw_schema, generate_fake_data]
+        >> load_csv
+        >> load_streaming      # ← Phase 4 streaming task
+        >> dbt_run_staging
+        >> dbt_test_staging
+        >> dbt_run_marts
+        >> dbt_test_marts
+    )

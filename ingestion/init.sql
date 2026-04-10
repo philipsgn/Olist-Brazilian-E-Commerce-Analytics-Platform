@@ -16,6 +16,8 @@ DROP TABLE IF EXISTS raw.products CASCADE;
 DROP TABLE IF EXISTS raw.sellers CASCADE;
 DROP TABLE IF EXISTS raw.geolocation CASCADE;
 DROP TABLE IF EXISTS raw.category_translation CASCADE;
+-- Streaming table: KHÔNG DROP — data tích lũy theo thời gian (append-only)
+-- Dùng CREATE TABLE IF NOT EXISTS để idempotent khi chạy lại
 
 -- 3. Tạo các bảng với tên KHỚP HOÀN TOÀN với script Python
 
@@ -111,3 +113,25 @@ CREATE TABLE raw.category_translation (
 );
 
 SELECT 'Database tables created with matching names!' AS status;
+
+-- ── PHASE 4: STREAMING TABLE ──────────────────────────────────────────────────
+-- NOTE: dùng CREATE TABLE IF NOT EXISTS (KHÔNG DROP trước) vì đây là
+--       append-only table. Data tích lũy qua nhiều lần Airflow chạy.
+--       Schema khớp với payload từ Lambda olist-order-simulator.
+CREATE TABLE IF NOT EXISTS raw.streaming_orders (
+    order_id        VARCHAR(50),
+    customer_id     VARCHAR(50),
+    product_id      VARCHAR(50),
+    seller_id       VARCHAR(50),
+    price           NUMERIC(10,2),
+    payment_type    VARCHAR(30),
+    order_status    VARCHAR(20),
+    event_timestamp TIMESTAMP,
+    loaded_at       TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index để tăng tốc query theo thời gian (time-series access pattern)
+CREATE INDEX IF NOT EXISTS idx_streaming_orders_event_ts
+    ON raw.streaming_orders (event_timestamp DESC);
+
+SELECT 'Streaming table raw.streaming_orders ready!' AS streaming_status;
