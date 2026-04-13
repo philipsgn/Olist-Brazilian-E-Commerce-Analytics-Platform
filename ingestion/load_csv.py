@@ -28,7 +28,8 @@ DATASET_CONFIG = {
 }
 
 # --- Hybrid Ingestion Strategy (Local + Cloud) ---
-DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
+SCRIPT_DIR = Path(__file__).parent
+DATA_DIR = Path(os.getenv("DATA_DIR", SCRIPT_DIR.parent / "data"))
 S3_BUCKET = os.getenv("S3_BUCKET", "olist-de-tanphat-2026")
 S3_PREFIX = "raw/csv/"
 USE_S3 = os.getenv("USE_S3", "false").lower() == "true"

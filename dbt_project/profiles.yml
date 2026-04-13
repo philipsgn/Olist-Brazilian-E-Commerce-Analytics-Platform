@@ -17,7 +17,7 @@ ecommerce:
       
       # [SECURITY] SSL verify-full ensures we are talking to the ACTUAL AWS RDS instance
       sslmode: verify-full
-      sslrootcert: "../../global-bundle.pem"
+      sslrootcert: "{{ env_var('SSL_CERT_PATH', '../global-bundle.pem') }}"
 
       # [RELIABILITY] Keepalives prevent connections from timing out by Firewall/Gateway
       keepalives_idle: 60 

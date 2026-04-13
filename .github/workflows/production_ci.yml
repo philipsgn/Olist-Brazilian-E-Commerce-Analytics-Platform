@@ -1,0 +1,68 @@
+name: Production Data Pipeline CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  data-quality-check:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: de_user
+          POSTGRES_PASSWORD: de_password
+          POSTGRES_DB: ecommerce_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DBT_PROFILES_DIR: ./dbt_project
+      RDS_HOST: localhost
+      RDS_USER: de_user
+      DBT_ENV_SECRET_RDS_PASSWORD: de_password
+      RDS_DBNAME: ecommerce_db
+      ENVIRONMENT: dev # Use dev profile for CI tests
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          pip install dbt-core dbt-postgres sqlfluff sqlfluff-templater-dbt
+          dbt deps --project-dir ./dbt_project/ecommerce
+
+      - name: SQL Linting (sqlfluff)
+        run: |
+          sqlfluff lint dbt_project/ecommerce/models --dialect postgres
+
+      - name: dbt Debug
+        run: dbt debug --project-dir ./dbt_project/ecommerce --target dev
+
+      - name: dbt Compile
+        run: dbt compile --project-dir ./dbt_project/ecommerce --target dev
+
+      - name: dbt Seed (Optional)
+        run: dbt seed --project-dir ./dbt_project/ecommerce --target dev || echo "No seeds found"
+
+      - name: dbt Run (Build Schema)
+        run: dbt run --project-dir ./dbt_project/ecommerce --target dev --limit 0 # Only create views/tables, no data load needed for structural test
+
+      - name: dbt Test
+        run: dbt test --project-dir ./dbt_project/ecommerce --target dev

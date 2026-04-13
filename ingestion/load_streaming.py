@@ -40,11 +40,12 @@ S3_PREFIX  = "raw/streaming/"
 SCHEMA     = "raw"
 TABLE      = "streaming_orders"
 
-# Checkpoint: lưu key S3 đã xử lý thành công. Dùng /tmp cho stateless container;
-# trong production nên dùng S3 hoặc DB table thay thế.
+# Checkpoint: lưu key S3 đã xử lý thành công.
+SCRIPT_DIR = Path(__file__).parent
+PROJECT_ROOT = SCRIPT_DIR.parent
 CHECKPOINT_FILE = Path(os.environ.get(
     "STREAMING_CHECKPOINT_FILE",
-    "/tmp/streaming_checkpoint.txt",
+    PROJECT_ROOT / "tmp" / "streaming_checkpoint.txt",
 ))
 
 RETRY_ATTEMPTS  = 2

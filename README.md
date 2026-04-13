@@ -23,6 +23,7 @@
 - [Phase 3 — Data Transformation (dbt)](#phase-3--data-transformation-dbt)
 - [Phase 4 — Orchestration (Airflow)](#phase-4--orchestration-airflow)
 - [Phase 5 — Visualization (Superset)](#phase-5--visualization-superset)
+- [Phase 5.1 — Athena Federated Query (AWS, 2026 Update)](#phase-51--athena-federated-query-aws-2026-update)
 - [Data Model](#data-model)
 - [Business Questions Answered](#business-questions-answered)
 - [Lessons Learned](#lessons-learned)
@@ -498,6 +499,50 @@ COUNT(*) filter where is_late = true / COUNT(*) total
 **4. Build dashboards**
 
 Dashboards → + Dashboard → drag and drop charts → publish.
+
+---
+
+## Phase 5.1 — Athena Federated Query (AWS, 2026 Update)
+
+**Goal:** Build a unified query layer across historical batch data (RDS PostgreSQL) and streaming data (S3 via Firehose), without manual Glue Crawler execution.
+
+### Architecture reality (what changed)
+
+- We **do not run Glue Crawler** in this flow.
+- For RDS, Athena Federated Query via PostgreSQL Lambda Connector maps metadata directly from PostgreSQL.
+- For streaming S3 data, schema is available through Glue Data Catalog managed by Firehose integration (or manual Athena DDL), so queries can run without crawler scans.
+- Use real production schema naming: `"rds_postgres"."dev_pht"`.
+- Use `order_date_id` in batch mart queries where time casting is needed.
+
+### Streaming Schema Discovery
+
+> AWS Glue Data Catalog serves as the central metadata repository.
+>
+> Tables are managed via Kinesis Data Firehose Direct Integration (or Manual DDL in Athena), ensuring real-time schema availability without manual Glue Crawler runs.
+
+### Cross-source JOIN (latest 2026 DE)
+
+```sql
+-- Gold Layer chuẩn thực tế Phát đã làm
+SELECT
+    'Streaming' AS source,
+    s.order_id,
+    CAST(s.created_at AS TIMESTAMP) AS created_at,
+    (s.price + s.freight_value) AS total_amount
+FROM "default"."marts_streaming_orders" s
+UNION ALL
+SELECT
+    'Batch' AS source,
+    f.order_id,
+    CAST(f.order_date_id AS TIMESTAMP) AS created_at,
+    (f.price + f.freight_value) AS total_amount
+FROM "rds_postgres"."dev_pht"."fact_order_items" f;
+```
+
+### Networking note
+
+Keep VPC Endpoints for `Glue`, `Secrets Manager`, and `S3` if connector Lambda is in VPC.  
+Otherwise, federated queries may fail with timeout errors.
 
 ---
 

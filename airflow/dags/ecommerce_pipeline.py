@@ -44,19 +44,34 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
+from airflow.utils.module_loading import import_string
+
+# Import custom alerting
+try:
+    from utils.discord_alerts import send_discord_alert
+except ImportError:
+    # Fallback if utils is not in PYTHONPATH
+    def send_discord_alert(context):
+        logging.error("Alert utility (discord_alerts) not found.")
 
 # =============================================================================
 # 1. CONFIGURATIONS & ENVIRONMENT MANAGEMENT
 # =============================================================================
 
-# Dynamic environment selection (default to 'dev' if not set in Airflow UI)
+# Environment and Path Management
 ENVIRONMENT = Variable.get("ENVIRONMENT", "dev")
 
-# Directory paths internal to the Docker container
-DBT_PROJECT_DIR      = "/opt/airflow/dbt_project/ecommerce"
-DBT_PROFILES_DIR     = "/opt/airflow/dbt_project"
-INGESTION_SCRIPT     = "/opt/airflow/ingestion/load_csv.py"
-STREAMING_SCRIPT     = "/opt/airflow/ingestion/load_streaming.py"
+# Derived relative paths for portability (Local, EC2, GitHub Runners)
+DAG_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(DAG_DIR))
+
+DBT_PROJECT_DIR = os.path.join(PROJECT_ROOT, "dbt_project", "ecommerce")
+DBT_PROFILES_DIR = os.path.join(PROJECT_ROOT, "dbt_project")
+INGESTION_DIR = os.path.join(PROJECT_ROOT, "ingestion")
+
+INGESTION_SCRIPT = os.path.join(INGESTION_DIR, "load_csv.py")
+STREAMING_SCRIPT = os.path.join(INGESTION_DIR, "load_streaming.py")
+SIM_SCRIPT = os.path.join(INGESTION_DIR, "simulate_data.py")
 
 # ---------------------------------------------------------------------------
 # DB Connection: assembled from env vars — never hardcoded.
@@ -100,13 +115,7 @@ default_args = {
 # 2. MONITORING & ALERTING
 # =============================================================================
 
-def send_failure_alert(context):
-    """
-    Standard failure callback. Can be expanded to Slack/Teams/PagerDuty.
-    """
-    task_instance = context.get("task_instance")
-    exception = context.get("exception")
-    logging.error(f"🚨 PIPELINE FAILURE | Task: {task_instance.task_id} | Env: {ENVIRONMENT} | Error: {exception}")
+# Using on_failure_callback from utils.alerts
 
 # =============================================================================
 # 3. PYTHON CALLABLES
@@ -126,8 +135,8 @@ def run_load_csv(**kwargs) -> str:
     os.environ.setdefault("POSTGRES_HOST",     os.getenv("POSTGRES_HOST",     "postgres"))
     os.environ.setdefault("POSTGRES_PORT",     os.getenv("POSTGRES_PORT",     "5432"))
     os.environ.setdefault("POSTGRES_DB",       os.getenv("POSTGRES_DB",       "ecommerce_db"))
-    # DATA_DIR: prefer env var, fall back to container path
-    os.environ["DATA_DIR"] = os.getenv("DATA_DIR", "/opt/airflow/data")
+    # DATA_DIR: prefer env var, fall back to project root / data
+    os.environ["DATA_DIR"] = os.getenv("DATA_DIR", os.path.join(PROJECT_ROOT, "data"))
     logger.info("[run_load_csv] DATA_DIR=%s  DB_HOST=%s",
                 os.environ["DATA_DIR"], os.getenv("POSTGRES_HOST", "postgres"))
 
@@ -152,8 +161,6 @@ def run_simulation(**kwargs) -> str:
     import os
     import sys
     import importlib.util
-    
-    SIM_SCRIPT = "/opt/airflow/ingestion/simulate_data.py"
     
     spec = importlib.util.spec_from_file_location("simulate_data", SIM_SCRIPT)
     if spec:
@@ -255,7 +262,7 @@ with DAG(
     start_date=pendulum.datetime(2024, 1, 1, tz="UTC"),
     catchup=False,
     tags=["ecommerce", "production", "quality-gated"],
-    on_failure_callback=send_failure_alert,
+    on_failure_callback=send_discord_alert,
     doc_md=f"""
 # 🏭 Production Data Pipeline ({ENVIRONMENT})
 This pipeline manages the end-to-end flow of E-commerce data from CSV + real-time streaming to business-ready tables.

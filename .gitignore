@@ -1,28 +1,48 @@
-# Data & Logs
-data/
+# --- Production Data Engineering .gitignore ---
+
+# Data & Logs (Batch & Streaming)
+data/*.csv
+data/*.json
+data/*.gz
 logs/
 airflow/logs/
 dbt_project/ecommerce/logs/
 dbt_project/ecommerce/target/
 dbt_project/ecommerce/dbt_packages/
+tmp/
+*.log
+*.checkpoint
 
-# Python & Venv
+# Python & Runtime Artifacts
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+env/
 venv/
 .venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
 
-# Environment & Secrets
+# Environment & Secrets (CRITICAL)
 .env
+.env.local
+.env.*.local
 auth.json
+*.pem
+*.key
+secrets/
 
-# IDEs
+# IDE & OS Artifacts
 .vscode/
 .idea/
+.DS_Store
+Thumbs.db
 
-# Database Data
+# Database Data (Local Docker)
 postgres_data/
 
-# Tmp
-tmp/
+# CI/CD
+.sqlfluff
