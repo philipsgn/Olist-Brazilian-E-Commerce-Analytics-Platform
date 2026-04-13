@@ -110,45 +110,41 @@ def read_dataframe(file_path: Path) -> pd.DataFrame:
 
 def load_table(file_path: Path, table_name: str) -> int:
     """
-    Sử dụng Chunking để tối ưu bộ nhớ.
-    - Khối đầu tiên: if_exists='replace'
-    - Khối tiếp theo: if_exists='append'
+    Sử dụng Chunking "siêu an toàn" cho máy RAM thấp.
+    - Giảm chunk_size xuống 20,000
+    - Bỏ method='multi' để tránh overhead bộ nhớ khi dựng SQL
     """
     engine = get_engine()
-    chunk_size = 50000 
+    chunk_size = 20000 
     first_chunk = True
     total_rows = 0
     
-    print(f"   → [PROCESSING] {table_name} with chunking (size={chunk_size})...")
+    print(f"   → [STREAMING] Loading {table_name}...")
     
-    # Kỹ thuật xử lý S3 hoặc Local
     if USE_S3:
         s3_client = boto3.client("s3")
         obj = s3_client.get_object(Bucket=S3_BUCKET, Key=f"{S3_PREFIX}{file_path.name}")
-        # Đọc trực tiếp từ stream của S3 theo chunk
         chunks = pd.read_csv(io.BytesIO(obj["Body"].read()), low_memory=False, chunksize=chunk_size)
     else:
         chunks = pd.read_csv(file_path, low_memory=False, chunksize=chunk_size)
 
     for chunk in chunks:
-        # Nếu là chunk đầu tiên thì 'replace' để tạo bảng mới, các chunk sau thì 'append'
         mode = 'replace' if first_chunk else 'append'
         
+        # Dùng method=None (mặc định) sẽ chậm hơn tí nhưng an toàn tuyệt đối cho RAM
         chunk.to_sql(
             name=table_name,
             con=engine,
             schema=SCHEMA,
             if_exists=mode,
             index=False,
-            method='multi',
-            chunksize=10000 # Ghi vào DB mỗi lần 10,000 dòng
+            chunksize=5000 
         )
         
         total_rows += len(chunk)
         if first_chunk:
             first_chunk = False
-            
-        print(f"     + Loaded a chunk of {len(chunk)} rows (Total: {total_rows})")
+        print(f"     + Progress: {total_rows} rows loaded...")
         
     return total_rows
 
