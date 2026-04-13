@@ -109,6 +109,8 @@ default_args = {
     "retry_delay": timedelta(minutes=10),
     "execution_timeout": timedelta(hours=1),
     "sla": timedelta(hours=2),
+    "on_failure_callback": send_discord_alert,
+    "on_retry_callback": send_discord_alert, # Thêm dòng này để nổ Discord ngay khi Retry
 }
 
 # =============================================================================
@@ -149,7 +151,11 @@ def run_load_csv(**kwargs) -> str:
     spec.loader.exec_module(module)
 
     # Invoke the core ingestion logic
-    module.run_ingestion()
+    try:
+        module.run_ingestion()
+    except Exception as e:
+        logger.error(f"❌ Lỗi trong lúc thực thi load_csv.py: {e}")
+        raise # Rất quan trọng: Re-raise để Airflow và Discord biết là FAIL
 
     return f"Success: Loaded data for {execution_date}"
 
@@ -168,7 +174,9 @@ def run_simulation(**kwargs) -> str:
         spec.loader.exec_module(module)
         module.simulate_new_orders(100)
         return "SUCCESS: Generated 100 new orders."
-    return "FAILED: Script not found."
+    
+    # Ép Airflow nhận diện thất bại để Discord "nổ chuông"
+    raise FileNotFoundError(f"🚨 Script simulate_data.py không tìm thấy tại: {SIM_SCRIPT}")
 
 
 def run_streaming_load(**kwargs) -> str:

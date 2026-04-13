@@ -110,29 +110,46 @@ def read_dataframe(file_path: Path) -> pd.DataFrame:
 
 def load_table(file_path: Path, table_name: str) -> int:
     """
-    Load data into PostgreSQL.
-    Dùng TRUNCATE + append thay vì replace để:
-    - Bảo vệ cấu hình bảng (Indexes, Constraints).
-    - Đảm bảo idempotency (chạy lại nhiều lần không nhân bản dữ liệu).
+    Load data into PostgreSQL using a memory-efficient chunked strategy.
+    Optimized for large datasets (e.g. geolocation) to prevent OOM/SIGTERM.
     """
-    df = read_dataframe(file_path)
     engine = get_engine()
+    total_rows = 0
+    
+    # Kỹ thuật Senior: Dùng iterator=True và chunksize để không tốn RAM
+    # Chúng ta sẽ Truncate bảng ngay lần đầu tiên, các lần sau chỉ Append
+    first_chunk = True
+    
+    logger.info("[load_table] Streaming %s into %s...", file_path.name, table_name)
+    
+    # Xử lý S3 hoặc Local đều trả về một iterator của DataFrame
+    if USE_S3:
+        s3_client = boto3.client("s3")
+        obj = s3_client.get_object(Bucket=S3_BUCKET, Key=f"{S3_PREFIX}{file_path.name}")
+        chunks = pd.read_csv(io.BytesIO(obj["Body"].read()), low_memory=False, chunksize=50000)
+    else:
+        chunks = pd.read_csv(file_path, low_memory=False, chunksize=50000)
 
-    with engine.begin() as conn:
-        # Clear data but keep table structure
-        conn.execute(text(f'TRUNCATE TABLE {SCHEMA}."{table_name}"'))
-
-        # Append fresh data into the existing table
-        df.to_sql(
-            name=table_name,
-            con=conn,
-            schema=SCHEMA,
-            if_exists="append",
-            index=False,
-            chunksize=5000,
-            method="multi",
-        )
-    return len(df)
+    for df in chunks:
+        with engine.begin() as conn:
+            if first_chunk:
+                # Chỉ xóa dữ liệu cũ ở chunk đầu tiên
+                conn.execute(text(f'TRUNCATE TABLE {SCHEMA}."{table_name}"'))
+                first_chunk = False
+            
+            df.to_sql(
+                name=table_name,
+                con=conn,
+                schema=SCHEMA,
+                if_exists="append",
+                index=False,
+                method="multi", # method="multi" nhanh nhưng tốn RAM hơn so với None (mặc định)
+                chunksize=5000  # Chia nhỏ insert statement để tránh lỗi buffer
+            )
+        total_rows += len(df)
+        logger.debug("   → Proccessed %d rows so far...", total_rows)
+        
+    return total_rows
 
 def run_ingestion() -> None:
     print(f"🚀 [INIT] Ingestion Mode: {'AWS S3' if USE_S3 else 'LOCAL FILE'}")
