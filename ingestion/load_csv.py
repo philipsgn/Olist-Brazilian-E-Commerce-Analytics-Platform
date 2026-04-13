@@ -43,8 +43,8 @@ USE_S3 = os.getenv("USE_S3", "false").lower() == "true"
 def _build_db_uri() -> str:
     pg_user     = os.getenv("POSTGRES_USER",     "de_user")
     pg_password = os.getenv("POSTGRES_PASSWORD", "de_password")
-    pg_host     = os.getenv("POSTGRES_HOST",     "127.0.0.1")  # Local default
-    pg_port     = os.getenv("POSTGRES_PORT",     "5433")        # Exposed host port
+    pg_host     = os.getenv("POSTGRES_HOST",     "postgres")   # Docker service name
+    pg_port     = os.getenv("POSTGRES_PORT",     "5432")       # Container internal port
     pg_db       = os.getenv("POSTGRES_DB",       "ecommerce_db")
     uri = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
     logger.info(
@@ -69,7 +69,7 @@ def get_engine():
     Wraps creation in try-except so a bad host/password produces a clear log
     entry instead of a raw traceback.
     """
-    pg_host = os.getenv("POSTGRES_HOST", "127.0.0.1")
+    pg_host = os.getenv("POSTGRES_HOST", "postgres")
     pg_db   = os.getenv("POSTGRES_DB",   "ecommerce_db")
     logger.info("[load_csv] Creating engine → host=%s db=%s", pg_host, pg_db)
     try:
