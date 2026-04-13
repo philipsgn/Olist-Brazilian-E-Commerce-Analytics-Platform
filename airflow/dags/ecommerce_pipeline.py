@@ -41,6 +41,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from airflow import DAG
+from airflow.exceptions import AirflowException
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
@@ -167,17 +168,19 @@ def run_simulation(**kwargs) -> str:
     import os
     import sys
     import importlib.util
-    
+
     spec = importlib.util.spec_from_file_location("simulate_data", SIM_SCRIPT)
-    if spec:
+    if spec is None:
+        raise AirflowException(f"CRITICAL ERROR: simulate_data.py not found at: {SIM_SCRIPT}")
+
+    try:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         module.simulate_new_orders(100)
         return "SUCCESS: Generated 100 new orders."
-    
-    # Ép Airflow nhận diện thất bại để Discord "nổ chuông"
-    raise FileNotFoundError(f"🚨 Script simulate_data.py không tìm thấy tại: {SIM_SCRIPT}")
-
+    except Exception as exc:
+        logger.exception("Simulation failed: %s", exc)
+        raise AirflowException(f"Data simulation failed: {exc}") from exc
 
 def run_streaming_load(**kwargs) -> str:
     """

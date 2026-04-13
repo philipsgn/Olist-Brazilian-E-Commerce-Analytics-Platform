@@ -21,9 +21,14 @@ def simulate_new_orders(num_orders=100):
     items_path = os.path.join(DATA_DIR, "olist_order_items_dataset.csv")
     payments_path = os.path.join(DATA_DIR, "olist_order_payments_dataset.csv")
 
-    if not all(os.path.exists(p) for p in [orders_path, items_path, payments_path]):
-        print("🚨 Lỗi: Thiếu 1 trong 3 file CSV cần thiết!")
-        return
+    missing_files = [p for p in [orders_path, items_path, payments_path] if not os.path.exists(p)]
+    if missing_files:
+        error_msg = (
+            f"CRITICAL ERROR: Missing {len(missing_files)} required CSV file(s): {missing_files}. "
+            "Simulation aborted to protect downstream data integrity."
+        )
+        logger.error(error_msg)
+        raise FileNotFoundError(error_msg)
 
     df_orders = pd.read_csv(orders_path)
     df_items = pd.read_csv(items_path)
@@ -64,11 +69,11 @@ def simulate_new_orders(num_orders=100):
     new_items.to_csv(items_path, mode='a', header=False, index=False)
     new_payments.to_csv(payments_path, mode='a', header=False, index=False)
 
-    print(f"✅ PRODUCTION SIMULATION COMPLETE:")
-    print(f"   -> Created {num_orders} new Orders (Integrity Linked)")
-    print(f"   -> Added {len(new_items)} Order Items")
-    print(f"   -> Added {len(new_payments)} Payments")
-    print(f"   -> Timestamps set to: {now.strftime('%Y-%m-%d')}")
+    logger.info("PRODUCTION SIMULATION COMPLETE")
+    logger.info("Created %s new Orders (Integrity Linked)", num_orders)
+    logger.info("Added %s Order Items", len(new_items))
+    logger.info("Added %s Payments", len(new_payments))
+    logger.info("Timestamps set to: %s", now.strftime("%Y-%m-%d"))
 
 if __name__ == "__main__":
     # When running standalone (e.g. python simulate_data.py on local or EC2),
