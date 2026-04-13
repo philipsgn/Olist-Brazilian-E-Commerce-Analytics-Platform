@@ -110,44 +110,45 @@ def read_dataframe(file_path: Path) -> pd.DataFrame:
 
 def load_table(file_path: Path, table_name: str) -> int:
     """
-    Load data into PostgreSQL using a memory-efficient chunked strategy.
-    Optimized for large datasets (e.g. geolocation) to prevent OOM/SIGTERM.
+    Sử dụng Chunking để tối ưu bộ nhớ.
+    - Khối đầu tiên: if_exists='replace'
+    - Khối tiếp theo: if_exists='append'
     """
     engine = get_engine()
+    chunk_size = 50000 
+    first_chunk = True
     total_rows = 0
     
-    # Kỹ thuật Senior: Dùng iterator=True và chunksize để không tốn RAM
-    # Chúng ta sẽ Truncate bảng ngay lần đầu tiên, các lần sau chỉ Append
-    first_chunk = True
+    print(f"   → [PROCESSING] {table_name} with chunking (size={chunk_size})...")
     
-    logger.info("[load_table] Streaming %s into %s...", file_path.name, table_name)
-    
-    # Xử lý S3 hoặc Local đều trả về một iterator của DataFrame
+    # Kỹ thuật xử lý S3 hoặc Local
     if USE_S3:
         s3_client = boto3.client("s3")
         obj = s3_client.get_object(Bucket=S3_BUCKET, Key=f"{S3_PREFIX}{file_path.name}")
-        chunks = pd.read_csv(io.BytesIO(obj["Body"].read()), low_memory=False, chunksize=50000)
+        # Đọc trực tiếp từ stream của S3 theo chunk
+        chunks = pd.read_csv(io.BytesIO(obj["Body"].read()), low_memory=False, chunksize=chunk_size)
     else:
-        chunks = pd.read_csv(file_path, low_memory=False, chunksize=50000)
+        chunks = pd.read_csv(file_path, low_memory=False, chunksize=chunk_size)
 
-    for df in chunks:
-        with engine.begin() as conn:
-            if first_chunk:
-                # Chỉ xóa dữ liệu cũ ở chunk đầu tiên
-                conn.execute(text(f'TRUNCATE TABLE {SCHEMA}."{table_name}"'))
-                first_chunk = False
+    for chunk in chunks:
+        # Nếu là chunk đầu tiên thì 'replace' để tạo bảng mới, các chunk sau thì 'append'
+        mode = 'replace' if first_chunk else 'append'
+        
+        chunk.to_sql(
+            name=table_name,
+            con=engine,
+            schema=SCHEMA,
+            if_exists=mode,
+            index=False,
+            method='multi',
+            chunksize=10000 # Ghi vào DB mỗi lần 10,000 dòng
+        )
+        
+        total_rows += len(chunk)
+        if first_chunk:
+            first_chunk = False
             
-            df.to_sql(
-                name=table_name,
-                con=conn,
-                schema=SCHEMA,
-                if_exists="append",
-                index=False,
-                method="multi", # method="multi" nhanh nhưng tốn RAM hơn so với None (mặc định)
-                chunksize=5000  # Chia nhỏ insert statement để tránh lỗi buffer
-            )
-        total_rows += len(df)
-        logger.debug("   → Proccessed %d rows so far...", total_rows)
+        print(f"     + Loaded a chunk of {len(chunk)} rows (Total: {total_rows})")
         
     return total_rows
 
