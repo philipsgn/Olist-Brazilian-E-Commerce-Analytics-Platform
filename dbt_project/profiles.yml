@@ -25,10 +25,10 @@ ecommerce:
     # --- DEVELOPMENT ENVIRONMENT (Local/Staging) ---
     dev:
       type: postgres
-      host: localhost
+      host: olist-de-db.c34iaimu4kqz.ap-southeast-1.rds.amazonaws.com
       port: 5432
       user: de_user
-      password: "{{ env_var('DB_PASSWORD', 'de_password') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD', 'de_password') }}"
       dbname: ecommerce_db
       schema: dev_pht
       threads: 4
