@@ -2,31 +2,6 @@
 =============================================================================
 FILE: airflow/dags/ecommerce_pipeline.py
 =============================================================================
-DAG: ecommerce_daily_production_pipeline
-Author: Senior Data Engineering Team
-
-PRODUCTION FEATURES:
-1. Environment Isolation (Dev/Prod via Airflow Variables)
-2. Quality Gating (dbt tests block downstream tasks)
-3. Advanced Monitoring (SLAs, Retries, Timeout, Slack Notifications)
-4. Robust Ingestion (Python-based with localized module loading)
-5. Schema Health Check (verify raw tables before ingestion)
-6. Real-time Streaming Ingestion (S3 → PostgreSQL via Kinesis Firehose)
-
-FILE DEPENDENCIES:
-  ingestion/init.sql            → DDL for raw.* tables (incl. streaming_orders)
-  ingestion/load_streaming.py   → Checkpoint-based streaming ingestion
-  ingestion/init_airflow.sql    → Airflow DB setup + Variable/Connection docs
-  db/init/010_ecommerce_db.sql  → Auto-run by Postgres on first startup
-  db/init/020_init_airflow.sql  → Auto-run by Postgres on first startup
-
-PIPELINE LINEAGE:
-  [verify_raw_schema] ──┐
-                        ├──► [extract_load_raw] ──► [load_streaming_orders]
-  [generate_fake_data] ─┘         (CSV batch)           (S3 streaming)
-                                                              │
-                          [dbt staging → test → marts → test]◄┘
-=============================================================================
 """
 
 from __future__ import annotations
@@ -64,7 +39,8 @@ ENVIRONMENT = Variable.get("ENVIRONMENT", "dev")
 
 # Derived relative paths for portability (Local, EC2, GitHub Runners)
 DAG_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(os.path.dirname(DAG_DIR))
+# Trong Docker: /opt/airflow/dags -> /opt/airflow
+PROJECT_ROOT = os.path.dirname(DAG_DIR)
 
 DBT_PROJECT_DIR = os.path.join(PROJECT_ROOT, "dbt_project", "ecommerce")
 DBT_PROFILES_DIR = os.path.join(PROJECT_ROOT, "dbt_project")
@@ -75,29 +51,15 @@ STREAMING_SCRIPT = os.path.join(INGESTION_DIR, "load_streaming.py")
 SIM_SCRIPT = os.path.join(INGESTION_DIR, "simulate_data.py")
 
 # ---------------------------------------------------------------------------
-# DB Connection: assembled from env vars — never hardcoded.
-# Local Docker defaults map to the service name 'postgres' (docker-compose).
-# On AWS EC2, set these env vars (or use AWS Secrets Manager injection).
+# DB Connection: assembled from env vars
 # ---------------------------------------------------------------------------
 def get_db_uri() -> str:
-    """Build the PostgreSQL connection URI from environment variables.
-
-    Priority: env var → sane local-Docker default.
-    Logs the resolved host/db so connection issues surface immediately.
-    """
     pg_user     = os.getenv("POSTGRES_USER",     "de_user")
     pg_password = os.getenv("POSTGRES_PASSWORD", "de_password")
-    pg_host     = os.getenv("POSTGRES_HOST",     "postgres")   # Docker service name
-    pg_port     = os.getenv("POSTGRES_PORT",     "5432")        # Internal Docker port
+    pg_host     = os.getenv("POSTGRES_HOST",     "postgres")
+    pg_port     = os.getenv("POSTGRES_PORT",     "5432")
     pg_db       = os.getenv("POSTGRES_DB",       "ecommerce_db")
-
-    uri = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
-    logger.info(
-        "[DB CONFIG] Resolved connection → host=%s port=%s db=%s user=%s",
-        pg_host, pg_port, pg_db, pg_user,
-    )
-    return uri
-
+    return f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
 
 DB_URI = get_db_uri()
 
@@ -111,68 +73,35 @@ default_args = {
     "execution_timeout": timedelta(hours=1),
     "sla": timedelta(hours=2),
     "on_failure_callback": send_discord_alert,
-    "on_retry_callback": send_discord_alert, # Thêm dòng này để nổ Discord ngay khi Retry
+    "on_retry_callback": send_discord_alert,
 }
-
-# =============================================================================
-# 2. MONITORING & ALERTING
-# =============================================================================
-
-# Using on_failure_callback from utils.alerts
 
 # =============================================================================
 # 3. PYTHON CALLABLES
 # =============================================================================
 
 def run_load_csv(**kwargs) -> str:
-    """
-    Orchestrates the ingestion of CSV files into the 'raw' schema.
-    Forwards all POSTGRES_* env vars so load_csv.py builds the correct URI.
-    """
     execution_date = kwargs.get("ds", "unknown")
-    logger.info("[%s] Starting CSV ingestion in %s environment...", execution_date, ENVIRONMENT)
-
-    # Pass DB credentials explicitly — load_csv.py reads these via os.getenv()
     os.environ.setdefault("POSTGRES_USER",     os.getenv("POSTGRES_USER",     "de_user"))
     os.environ.setdefault("POSTGRES_PASSWORD", os.getenv("POSTGRES_PASSWORD", "de_password"))
     os.environ.setdefault("POSTGRES_HOST",     os.getenv("POSTGRES_HOST",     "postgres"))
     os.environ.setdefault("POSTGRES_PORT",     os.getenv("POSTGRES_PORT",     "5432"))
     os.environ.setdefault("POSTGRES_DB",       os.getenv("POSTGRES_DB",       "ecommerce_db"))
-    # DATA_DIR: prefer env var, fall back to project root / data
     os.environ["DATA_DIR"] = os.getenv("DATA_DIR", os.path.join(PROJECT_ROOT, "data"))
-    logger.info("[run_load_csv] DATA_DIR=%s  DB_HOST=%s",
-                os.environ["DATA_DIR"], os.getenv("POSTGRES_HOST", "postgres"))
 
-    # Dynamically load the ingestion script
     spec = importlib.util.spec_from_file_location("load_csv", INGESTION_SCRIPT)
     if spec is None:
         raise FileNotFoundError(f"Missing ingestion script: {INGESTION_SCRIPT}")
 
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-
-    # Invoke the core ingestion logic
-    try:
-        module.run_ingestion()
-    except Exception as e:
-        logger.error(f"❌ Lỗi trong lúc thực thi load_csv.py: {e}")
-        raise # Rất quan trọng: Re-raise để Airflow và Discord biết là FAIL
-
+    module.run_ingestion()
     return f"Success: Loaded data for {execution_date}"
 
 def run_simulation(**kwargs) -> str:
-    """
-    Kéo script simulate_data.py để tự động sinh thêm đơn hàng mới. 
-    Mỗi lần chạy sẽ đẻ ra 100 đơn hàng giả thời gian hiện tại.
-    """
-    import os
-    import sys
-    import importlib.util
-
     spec = importlib.util.spec_from_file_location("simulate_data", SIM_SCRIPT)
     if spec is None:
         raise AirflowException(f"CRITICAL ERROR: simulate_data.py not found at: {SIM_SCRIPT}")
-
     try:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -183,83 +112,28 @@ def run_simulation(**kwargs) -> str:
         raise AirflowException(f"Data simulation failed: {exc}") from exc
 
 def run_streaming_load(**kwargs) -> str:
-    """
-    Task: Load streaming orders từ S3 raw/streaming/ vào raw.streaming_orders.
-    Dùng checkpoint-based deduplication — idempotent, safe to retry.
-    Env vars POSTGRES_* và S3_BUCKET được forward tự động từ container environment.
-    """
-    execution_date = kwargs.get("ds", "unknown")
-    logger.info(
-        "[%s] Starting streaming ingestion in %s environment...",
-        execution_date, ENVIRONMENT,
-    )
-
     spec = importlib.util.spec_from_file_location("load_streaming", STREAMING_SCRIPT)
     if spec is None:
         raise FileNotFoundError(f"Missing streaming script: {STREAMING_SCRIPT}")
-
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.run_streaming_ingestion()
-
-    return f"Streaming ingestion complete for {execution_date}"
-
+    return "Streaming ingestion complete"
 
 def verify_raw_schema(**kwargs) -> str:
-    """
-    Health-check task: Xác minh tất cả 9 bảng raw.* tồn tại trước khi ingestion.
-    Wrapped trong try-except để log lỗi kết nối rõ ràng thay vì crash bí ẩn.
-    """
     import sqlalchemy
     from sqlalchemy import text
-
-    REQUIRED_TABLES = [
-        "orders", "customers", "order_items", "payments",
-        "reviews", "products", "sellers", "geolocation",
-        "category_translation",
-        "streaming_orders",         # Phase 4 — Kinesis Firehose → S3 → PG
-    ]
-
-    pg_host = os.getenv("POSTGRES_HOST", "postgres")
-    pg_db   = os.getenv("POSTGRES_DB",   "ecommerce_db")
-    logger.info("[verify_raw_schema] Connecting to host=%s db=%s", pg_host, pg_db)
-
+    REQUIRED_TABLES = ["orders", "customers", "order_items", "payments", "reviews", "products", "sellers", "geolocation", "category_translation", "streaming_orders"]
     try:
         engine = sqlalchemy.create_engine(DB_URI)
-        missing = []
-
         with engine.connect() as conn:
             for table in REQUIRED_TABLES:
-                result = conn.execute(text(
-                    "SELECT EXISTS ("
-                    "  SELECT 1 FROM information_schema.tables"
-                    "  WHERE table_schema = 'raw' AND table_name = :tbl"
-                    ")"
-                ), {"tbl": table})
-                exists = result.scalar()
-                if not exists:
-                    missing.append(f"raw.{table}")
-
-    except sqlalchemy.exc.OperationalError as exc:
-        # OperationalError = wrong host, wrong port, wrong password, network issue
-        logger.error(
-            "[verify_raw_schema] ❌ Cannot connect to PostgreSQL!\n"
-            "  host     : %s\n"
-            "  db       : %s\n"
-            "  Check POSTGRES_HOST / POSTGRES_PASSWORD env vars or RDS Security Group.\n"
-            "  Original error: %s",
-            pg_host, pg_db, exc,
-        )
+                result = conn.execute(text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'raw' AND table_name = :tbl)"), {"tbl": table})
+                if not result.scalar(): raise Exception(f"Missing table: raw.{table}")
+    except Exception as exc:
+        logger.error(f"Schema check failed: {exc}")
         raise
-
-    if missing:
-        raise Exception(
-            f"❌ Schema health check FAILED. Missing tables: {missing}. "
-            f"Run db/init/010_ecommerce_db.sql or restart the postgres container."
-        )
-
-    logger.info("✅ Schema health check PASSED. All %d raw tables exist.", len(REQUIRED_TABLES))
-    return f"OK: {len(REQUIRED_TABLES)} tables verified in raw schema."
+    return "Schema verified"
 
 # =============================================================================
 # 4. DAG DEFINITION
@@ -267,124 +141,36 @@ def verify_raw_schema(**kwargs) -> str:
 
 with DAG(
     dag_id="ecommerce_daily_production_pipeline",
-    description="Refined Production Pipeline: Extraction -> Staging -> Marts",
     default_args=default_args,
     schedule="0 6 * * *",
     start_date=pendulum.datetime(2024, 1, 1, tz="UTC"),
     catchup=False,
-    tags=["ecommerce", "production", "quality-gated"],
-    on_failure_callback=send_discord_alert,
-    doc_md=f"""
-# 🏭 Production Data Pipeline ({ENVIRONMENT})
-This pipeline manages the end-to-end flow of E-commerce data from CSV + real-time streaming to business-ready tables.
-
-### 🚀 Data Sources:
-- **Batch CSV** → `raw.*` tables via `load_csv.py`
-- **Streaming (Kinesis Firehose → S3 GZIP)** → `raw.streaming_orders` via `load_streaming.py`
-
-### 🔄 Simulation Mode:
-This DAG automatically generates **100 NEW ORDERS** daily (Lambda: olist-order-simulator, 10 orders/min).
-
-### 🛡️ Quality Gates:
-Tests executed at **every dbt layer**. A failure in `dbt test` halts the pipeline to prevent data corruption.
-
-### 📈 Service Level Agreement (SLA):
-Expected data readiness by **8:00 AM UTC** (2 hours after start).
-    """
+    tags=["ecommerce"]
 ) as dag:
 
-    # --- STEP 0A: SCHEMA HEALTH CHECK ---
-    # Xác minh raw schema đã được init bởi db/init/010_ecommerce_db.sql
-    # Nếu thiếu bảng → pipeline dừng ngay, không chạy ingestion
-    check_raw_schema = PythonOperator(
-        task_id="verify_raw_schema",
-        python_callable=verify_raw_schema,
-        doc_md="""
-        Kiểm tra 9 bảng raw.* đã tồn tại trong PostgreSQL.
-        **Nguồn schema:** `ingestion/init.sql` (auto-mount qua `db/init/010_ecommerce_db.sql`).
-        Nếu FAIL → kiểm tra postgres container hoặc chạy lại init.sql.
-        """,
-    )
+    check_raw_schema = PythonOperator(task_id="verify_raw_schema", python_callable=verify_raw_schema)
+    generate_fake_data = PythonOperator(task_id="generate_fake_data", python_callable=run_simulation)
+    load_csv = PythonOperator(task_id="extract_load_raw", python_callable=run_load_csv)
+    load_streaming = PythonOperator(task_id="load_streaming_orders", python_callable=run_streaming_load)
 
-    # --- STEP 0B: SIMULATE ---
-    generate_fake_data = PythonOperator(
-        task_id="generate_fake_data",
-        python_callable=run_simulation,
-    )
-
-    # --- STEP 1A: EXTRACT & LOAD (Batch CSV) ---
-    load_csv = PythonOperator(
-        task_id="extract_load_raw",
-        python_callable=run_load_csv,
-        doc_md="Load 9 CSV datasets from local/S3 into raw.* tables (TRUNCATE + append).",
-    )
-
-    # --- STEP 1B: LOAD STREAMING ORDERS (S3 → PostgreSQL) ---
-    # Chạy SAU batch CSV để đảm bảo schema đã sẵn sàng.
-    # Checkpoint-based: chỉ load file mới, không load lại.
-    load_streaming = PythonOperator(
-        task_id="load_streaming_orders",
-        python_callable=run_streaming_load,
-        retries=2,
-        retry_delay=timedelta(minutes=2),
-        doc_md="""
-        Load streaming orders từ S3 `raw/streaming/` (Kinesis Firehose GZIP) vào
-        `raw.streaming_orders`. Checkpoint lưu tại `/tmp/streaming_checkpoint.txt`.
-        **Nguồn:** Lambda `olist-order-simulator` → Kinesis → Firehose → S3.
-        """,
-    )
-
-    # Env vars forwarded into every dbt BashOperator so profiles.yml env_var() calls work
     _dbt_env = {
-        "PATH":              "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
-        "POSTGRES_USER":     os.getenv("POSTGRES_USER",     "de_user"),
+        "PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
+        "POSTGRES_USER": os.getenv("POSTGRES_USER", "de_user"),
         "POSTGRES_PASSWORD": os.getenv("POSTGRES_PASSWORD", "de_password"),
-        "POSTGRES_HOST":     os.getenv("POSTGRES_HOST",     "postgres"),
-        "POSTGRES_PORT":     os.getenv("POSTGRES_PORT",     "5432"),
-        "POSTGRES_DB":       os.getenv("POSTGRES_DB",       "ecommerce_db"),
+        "POSTGRES_HOST": os.getenv("POSTGRES_HOST", "postgres"),
+        "POSTGRES_PORT": os.getenv("POSTGRES_PORT", "5432"),
+        "POSTGRES_DB": os.getenv("POSTGRES_DB", "ecommerce_db"),
     }
 
-    # --- STEP 2: STAGING (VIEW LAYER) ---
-    dbt_run_staging = BashOperator(
-        task_id="dbt_run_staging",
-        bash_command=f"dbt run --select staging.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}",
-        env=_dbt_env,
-        append_env=True,
-    )
+    dbt_run_staging = BashOperator(task_id="dbt_run_staging", bash_command=f"dbt run --select staging.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
+    dbt_test_staging = BashOperator(task_id="dbt_test_staging", bash_command=f"dbt test --select staging.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
+    dbt_run_marts = BashOperator(task_id="dbt_run_marts", bash_command=f"dbt run --select marts.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
+    dbt_test_marts = BashOperator(task_id="dbt_test_marts", bash_command=f"dbt test --select marts.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
 
-    dbt_test_staging = BashOperator(
-        task_id="dbt_test_staging",
-        bash_command=f"dbt test --select staging.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}",
-        env=_dbt_env,
-        append_env=True,
-    )
-
-    # --- STEP 3: MARTS (ANALYTICS LAYER) ---
-    dbt_run_marts = BashOperator(
-        task_id="dbt_run_marts",
-        bash_command=f"dbt run --select marts.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}",
-        env=_dbt_env,
-        append_env=True,
-    )
-
-    dbt_test_marts = BashOperator(
-        task_id="dbt_test_marts",
-        bash_command=f"dbt test --select marts.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}",
-        env=_dbt_env,
-        append_env=True,
-    )
-
-    # --- LINEAGE ---
-    # Phase 1: Parallel pre-checks
-    #   verify_raw_schema + generate_fake_data ──► extract_load_raw (batch CSV)
-    # Phase 2: Streaming ingestion chạy sau batch (schema đã ready)
-    #   extract_load_raw ──► load_streaming_orders
-    # Phase 3: dbt transformations (chỉ chạy khi cả batch + streaming thành công)
-    #   load_streaming_orders ──► dbt staging ──► test ──► marts ──► test
     (
         [check_raw_schema, generate_fake_data]
         >> load_csv
-        >> load_streaming      # ← Phase 4 streaming task
+        >> load_streaming
         >> dbt_run_staging
         >> dbt_test_staging
         >> dbt_run_marts
