@@ -1,87 +1,73 @@
 version: 2
 
 models:
-  - name: mart_revenue_daily
-    description: "Bảng tổng hợp doanh thu theo ngày, dùng trực tiếp cho Superset Dashboard."
+  - name: fact_order_items
+    description: "Granular table containing all items within an order. One row per item."
     columns:
-      - name: date_day
-        description: "Ngày giao dịch chính xác (Temporal axis)"
+      - name: order_id
+        description: "Unique identifier for the order."
         tests:
           - not_null
-      - name: total_revenue
-        description: "Tổng doanh thu bao gồm giá sản phẩm và phí vận chuyển"
+          - relationships:
+              to: ref('stg_orders')
+              field: order_id
+
+      - name: order_item_id
+        description: "Sequential identifier for items within the same order."
         tests:
           - not_null
 
-  - name: fact_order_items
-    description: "Bảng sự kiện chi tiết của từng đơn hàng."
-    columns:
-      - name: order_id
+      - name: product_id
+        description: "Identifier for the product."
         tests:
           - not_null
-          # - unique  # Lưu ý: 1 order có thể có nhiều item, nên hãy kiểm tra kỹ logic trước khi set unique ở đây
+          - relationships:
+              to: ref('stg_products')
+              field: product_id
+
+      - name: price
+        description: "Selling price of the item."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: false
+
+      - name: freight_value
+        description: "Shipping cost for the item."
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
 
   - name: dim_customers
-    description: "Thông tin chi tiết về khách hàng, bao gồm vị trí địa lý và hành vi mua hàng cơ bản."
+    description: "Customer dimensional table with location details."
     columns:
       - name: customer_id
+        description: "Primary key for the customer."
+        tests:
+          - unique
+          - not_null
+
+      - name: customer_unique_id
+        description: "Unique identifier for the physical customer (persists across orders)."
         tests:
           - not_null
-          - unique
-      - name: customer_city
-        description: "Thành phố của khách hàng"
-      - name: customer_state
-        description: "Bang của khách hàng"
+
+      - name: customer_zip_code_prefix
+        tests:
+          - not_null
 
   - name: dim_products
-    description: "Danh mục sản phẩm với thông tin về loại hàng và kích thước."
+    description: "Product dimensional table with translated categories."
     columns:
       - name: product_id
+        description: "Primary key for the product."
         tests:
-          - not_null
           - unique
+          - not_null
+
       - name: product_category
-        description: "Tên ngành hàng (đã được dịch sang tiếng Anh)"
-
-  - name: dim_sellers
-    description: "Thông tin về các nhà bán hàng (Sellers) trên hệ thống."
-    columns:
-      - name: seller_id
+        description: "English translation of the product category."
         tests:
           - not_null
-          - unique
-      - name: seller_city
-        description: "Thành phố đặt kho của nhà bán hàng"
-
-  - name: fact_payments
-    description: "Bảng ghi nhận các giao dịch thanh toán cho từng đơn hàng."
-    columns:
-      - name: order_id
-        tests:
-          - not_null
-      - name: payment_types
-        description: "Phương thức thanh toán (có thể chứa nhiều loại, ví dụ: credit_card,voucher)"
-
-
-  - name: dim_date
-    description: "Bảng kích thước thời gian để hỗ trợ phân tích theo từng cấp độ ngày, tháng, quý, năm."
-    columns:
-      - name: date_id
-        tests:
-          - not_null
-          - unique
-      - name: year
-        description: "Năm (YYYY)"
-      - name: month
-        description: "Tháng (1-12)"
-
-  - name: dim_geolocation
-    description: "Thông tin vị trí địa lý dựa trên mã ZIP code của Brazil."
-    columns:
-      - name: zip_code_prefix
-        tests:
-          - not_null
-      - name: city
-        description: "Tên thành phố tương ứng với mã ZIP"
-
-
