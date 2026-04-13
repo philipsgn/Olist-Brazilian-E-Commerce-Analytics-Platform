@@ -75,6 +75,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
+      - ./airflow/utils:/opt/airflow/utils             # Custom utils path
       - ./data:/opt/airflow/data                       # CSV files for ingestion
       - ./ingestion:/opt/airflow/ingestion             # load_csv.py script
       - ./dbt_project:/opt/airflow/dbt_project         # dbt project + profiles.yml
@@ -114,6 +115,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
+      - ./airflow/utils:/opt/airflow/utils
       - ./data:/opt/airflow/data
       - ./ingestion:/opt/airflow/ingestion
       - ./dbt_project:/opt/airflow/dbt_project
@@ -140,6 +142,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
+      - ./airflow/utils:/opt/airflow/utils
       - ./data:/opt/airflow/data
       - ./ingestion:/opt/airflow/ingestion
       - ./dbt_project:/opt/airflow/dbt_project

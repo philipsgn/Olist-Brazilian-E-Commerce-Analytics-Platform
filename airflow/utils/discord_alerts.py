@@ -1,66 +1,79 @@
-"""
-FILE: airflow/utils/discord_alerts.py
-Author: Senior Data Engineer
-Purpose: Gửi thông báo lỗi pipeline tới Discord Webhook (Chuẩn Production).
-"""
-
-import os
 import requests
+import json
+import os
 import logging
-from datetime import datetime
 
+# Cấu hình logging để dễ dàng debug trong logs của Airflow Worker
 logger = logging.getLogger(__name__)
 
 def send_discord_alert(context):
     """
-    Callback function khi Task thất bại.
-    Airflow sẽ tự động truyền 'context' chứa thông tin lỗi vào đây.
+    Hàm callback gửi thông báo lỗi từ Airflow lên Discord.
+    Đã được tối ưu (try-except) để tuyệt đối không làm crash Task/Worker nếu Webhook lỗi.
     """
-    # 1. Lấy Webhook URL từ biến môi trường (Bảo mật)
+    # 1. Lấy Webhook URL từ biến môi trường (An toàn hơn hardcode)
     webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
     
     if not webhook_url:
-        logger.warning("⚠️ DISCORD_WEBHOOK_URL chưa được cấu hình. Bỏ qua gửi thông báo.")
+        logger.warning("⚠️ DISCORD_WEBHOOK_URL is not set in environment variables. Skipping alert.")
         return
 
-    # 2. Trích xuất thông tin từ context của Airflow
-    dag_id = context.get('task_instance').dag_id
-    task_id = context.get('task_instance').task_id
-    
-    # Xử lý thời gian thực thi (hỗ trợ cả Pendulum datetime)
-    exec_date_raw = context.get('execution_date')
-    exec_date = exec_date_raw.strftime('%Y-%m-%d %H:%M:%S') if exec_date_raw else "N/A"
-    
-    log_url = context.get('task_instance').log_url
-    exception = str(context.get('exception'))[:500]  # Lấy 500 ký tự đầu của lỗi
-    
-    # Xác định môi trường (Dev/Prod) để đổi màu thông báo
-    env = os.getenv("ENVIRONMENT", "dev").upper()
-    hex_color = 15158332 if env == "PROD" else 3447003 # Đỏ cho Prod, Xanh cho Dev
-
-    # 3. Cấu trúc nội dung gửi tới Discord (Dạng Embed chuyên nghiệp)
-    payload = {
-        "username": f"Airflow Bot ({env})",
-        "avatar_url": "https://airflow.apache.org/images/feature-image.png",
-        "embeds": [{
-            "title": "🚨 CẢNH BÁO PIPELINE THẤT BẠI",
-            "description": f"Phát ơi! Pipeline **{dag_id}** vừa gặp sự cố.",
-            "color": hex_color,
-            "fields": [
-                {"name": "Môi trường", "value": f"`{env}`", "inline": True},
-                {"name": "Task ID", "value": f"`{task_id}`", "inline": True},
-                {"name": "Thời gian chạy", "value": f"`{exec_date}`", "inline": False},
-                {"name": "Lỗi chi tiết", "value": f"```python\n{exception}\n```", "inline": False},
-                {"name": "Kiểm tra Logs ngay tại đây", "value": f"[Bấm vào để xem Log]({log_url})", "inline": False}
-            ],
-            "footer": {"text": "Hệ thống giám sát dữ liệu E-commerce | AWS EC2 Deployment"}
-        }]
-    }
-
-    # 4. Gửi request tới Discord kèm cơ chế xử lý lỗi
     try:
-        response = requests.post(webhook_url, json=payload, timeout=10)
-        response.raise_for_status()
-        logger.info(f"✅ Đã gửi thông báo lỗi Task {task_id} tới Discord.")
+        # 2. Thu thập thông tin từ context của Airflow
+        ti = context.get('task_instance')
+        dag_id = ti.dag_id
+        task_id = ti.task_id
+        
+        # Lấy thời gian chạy (hỗ trợ cả logical_date của Airflow 2.2+ và execution_date cũ)
+        execution_date = context.get('logical_date') or context.get('execution_date')
+        exec_date_str = execution_date.strftime('%Y-%m-%d %H:%M:%S') if execution_date else "N/A"
+        
+        log_url = ti.log_url
+        exception = context.get('exception')
+
+        # 3. Format message an toàn (Discord giới hạn payload size)
+        error_message = str(exception)[:500] + "..." if len(str(exception)) > 500 else str(exception)
+
+        # 4. Xác định môi trường để hiển thị màu sắc
+        env = os.getenv("ENVIRONMENT", "DEV").upper()
+        # Màu đỏ (15158332) cho lỗi, hoặc màu cam (15105570)
+        color = 15158332 if env == "PROD" else 15105570
+
+        payload = {
+            "username": f"Airflow Alert [{env}]",
+            "avatar_url": "https://airflow.apache.org/images/feature-image.png",
+            "embeds": [{
+                "title": "❌ Pipeline Task Failed",
+                "description": f"Phát ơi! Đã xảy ra lỗi tại DAG **{dag_id}**",
+                "color": color,
+                "fields": [
+                    {"name": "DAG ID", "value": f"`{dag_id}`", "inline": True},
+                    {"name": "Task ID", "value": f"`{task_id}`", "inline": True},
+                    {"name": "Execution Time", "value": f"`{exec_date_str}`", "inline": False},
+                    {"name": "Error Details", "value": f"```python\n{error_message}\n```", "inline": False},
+                    {"name": "Check Logs", "value": f"[Bấm vào đây để xem Log chi tiết]({log_url})", "inline": False}
+                ],
+                "footer": {
+                    "text": "E-commerce Pipeline Monitoring | AWS EC2 Deployment"
+                },
+                "timestamp": execution_date.isoformat() if execution_date else None
+            }]
+        }
+
+        # 5. Gửi request tới Discord Webhook
+        response = requests.post(
+            webhook_url, 
+            data=json.dumps(payload),
+            headers={'Content-Type': 'application/json'},
+            timeout=10
+        )
+        
+        # Kiểm tra phản hồi nhưng không raise Exception để tránh crash task chính
+        if response.status_code == 204 or response.status_code == 200:
+            logger.info(f"✅ Successfully sent failure alert for {task_id} to Discord.")
+        else:
+            logger.error(f"❌ Discord Webhook returned status {response.status_code}: {response.text}")
+
     except Exception as e:
-        logger.error(f"❌ Không thể gửi thông báo tới Discord: {e}")
+        # Bọc toàn bộ trong try-except để đảm bảo logic thông báo không làm ảnh hưởng đến Pipeline
+        logger.error(f"❌ Critical error in send_discord_alert: {str(e)}")
