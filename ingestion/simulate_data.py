@@ -11,6 +11,10 @@ logger = logging.getLogger(__name__)
 # Override: set DATA_DIR env var before running (e.g. on EC2 or inside Airflow).
 DATA_DIR = os.environ.get("DATA_DIR", "/opt/airflow/data")
 logger.info("[simulate_data] DATA_DIR resolved to: %s", DATA_DIR)
+if os.path.exists(DATA_DIR):
+    logger.info("[simulate_data] Files found in DATA_DIR: %s", os.listdir(DATA_DIR))
+else:
+    logger.error("[simulate_data] DATA_DIR does not exist!")
 
 def simulate_new_orders(num_orders=100):
     """
