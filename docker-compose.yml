@@ -49,6 +49,7 @@ services:
       - ./data:/opt/airflow/data
       - ./ingestion:/opt/airflow/ingestion
       - ./dbt_project:/opt/airflow/dbt_project
+      - ./tmp:/opt/airflow/tmp
 
   airflow-webserver:
     <<: *airflow-common
