@@ -39,12 +39,21 @@ def simulate_new_orders(num_orders=100):
     df_items = pd.read_csv(items_path)
     df_payments = pd.read_csv(payments_path)
 
-    # 2. Chọn ngẫu nhiên [num_orders] đơn hàng mẫu để làm khuôn mẫu mô phỏng
-    # Chúng ta lấy các đơn hàng 'delivered' để mô phỏng cho thật
-    sample_orders = df_orders[df_orders['order_status'] == 'delivered'].sample(num_orders).copy()
-    
-    # Danh sách các order_id gốc để tìm items và payments tương ứng
-    original_order_ids = sample_orders['order_id'].tolist()
+    # [HOTFIX] Xử lý trường hợp file trống: Nếu không có dữ liệu để lấy mẫu, tạo dữ liệu trắng hoàn toàn
+    if len(df_orders) < num_orders:
+        logger.warning("Not enough data to sample. Generating purely synthetic records.")
+        # Tạo 1 dòng mẫu giả định để tránh lỗi logic bên dưới
+        sample_orders = pd.DataFrame([{
+            'order_id': 'placeholder',
+            'customer_id': 'template_cust',
+            'order_status': 'delivered',
+            'order_purchase_timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }] * num_orders)
+        original_order_ids = ['placeholder'] * num_orders
+    else:
+        # Chọn ngẫu nhiên [num_orders] đơn hàng mẫu để làm khuôn mẫu mô phỏng
+        sample_orders = df_orders[df_orders['order_status'] == 'delivered'].sample(num_orders).copy()
+        original_order_ids = sample_orders['order_id'].tolist()
     
     # 3. Tạo mapping ID mới (Fake ID) để duy trì mối quan hệ (Relational Mapping)
     new_id_map = {old: f"fake_{os.urandom(8).hex()}" for old in original_order_ids}
