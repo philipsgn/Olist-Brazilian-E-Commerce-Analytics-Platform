@@ -3,7 +3,7 @@
 select
     p.product_id,
     p.product_category_name,
-    t.product_category_name_english as product_category,
+    COALESCE(t.product_category_name_english, p.product_category_name, 'others') as product_category,
     p.product_name_lenght,
     p.product_description_lenght,
     p.product_photos_qty,
