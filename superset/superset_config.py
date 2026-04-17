@@ -29,10 +29,8 @@ _pg_host     = os.getenv("POSTGRES_HOST",     "postgres")   # Docker service nam
 _pg_port     = os.getenv("POSTGRES_PORT",     "5432")        # Internal Docker port
 _pg_db       = os.getenv("POSTGRES_DB",       "ecommerce_db")
 
-SQLALCHEMY_DATABASE_URI = (
-    f"postgresql+psycopg2://{_pg_user}:{_pg_password}"
-    f"@{_pg_host}:{_pg_port}/{_pg_db}"
-)
+# Use SQLite for Superset metadata to prevent Alembic collision with Airflow on ecommerce_db
+SQLALCHEMY_DATABASE_URI = "sqlite:////app/superset_home/superset.db"
 
 logger.info(
     "[superset_config] Metadata DB → host=%s port=%s db=%s user=%s",
