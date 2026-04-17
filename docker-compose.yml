@@ -86,11 +86,13 @@ services:
       - "8088:8088"
     depends_on:
       postgres: { condition: service_healthy }
-    volumes:
-      - ./superset_home:/app/superset_home
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-YOUR_SUPER_SECRET_KEY_PROD_12345}
       ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin123}
+    env_file: .env
+    volumes:
+      - ./superset_home:/app/superset_home
+      - ./superset/superset_config.py:/app/pythonpath/superset_config.py
     command: >
       bash -c "superset db upgrade &&
       superset fab create-admin --username admin --firstname Admin --lastname Superset --email admin@example.com --password \"$${ADMIN_PASSWORD}\" &&
