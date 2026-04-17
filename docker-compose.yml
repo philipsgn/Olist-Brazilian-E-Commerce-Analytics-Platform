@@ -77,5 +77,25 @@ services:
       airflow-scheduler: { condition: service_started }
     command: "airflow celery worker"
 
+  superset:
+    image: apache/superset
+    container_name: de_superset
+    restart: unless-stopped
+    user: "root" # Ensure write permission to the mounted superset_home volume
+    ports:
+      - "8088:8088"
+    depends_on:
+      postgres: { condition: service_healthy }
+    volumes:
+      - ./superset_home:/app/superset_home
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-YOUR_SUPER_SECRET_KEY_PROD_12345}
+      ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin123}
+    command: >
+      bash -c "superset db upgrade &&
+      superset fab create-admin --username admin --firstname Admin --lastname Superset --email admin@example.com --password \"$${ADMIN_PASSWORD}\" &&
+      superset init &&
+      gunicorn -w 2 --timeout 120 -b 0.0.0.0:8088 --limit-request-line 0 --limit-request-field_size 0 \"superset.app:create_app()\""
+
 volumes:
   postgres_data:
