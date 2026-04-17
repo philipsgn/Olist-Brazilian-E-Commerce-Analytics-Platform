@@ -89,6 +89,7 @@ services:
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-YOUR_SUPER_SECRET_KEY_PROD_12345}
       ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin123}
+      POSTGRES_PORT: "5432" # Override .env's POSTGRES_PORT=5433 so it connects using Internal Docker port
     env_file: .env
     volumes:
       - ./superset_home:/app/superset_home
