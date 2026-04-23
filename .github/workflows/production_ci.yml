@@ -103,8 +103,7 @@ jobs:
       # ------------------------------------------------------------------
       - name: "📦 Package Project (TAR)"
         run: |
-          tar -czf deploy.tar.gz \
-            --exclude='deploy.tar.gz' \
+          tar -czf /tmp/deploy.tar.gz \
             --exclude='.git' \
             --exclude='__pycache__' \
             --exclude='.env' \
@@ -123,6 +122,8 @@ jobs:
             --exclude='*.pyc' \
             --exclude='*.pyo' \
             .
+          
+          mv /tmp/deploy.tar.gz .
 
       # ------------------------------------------------------------------
       # STEP 2: Send the packaged file to EC2 via SCP
