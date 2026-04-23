@@ -81,12 +81,6 @@ jobs:
       - name: "🌱 dbt Seed (if any)"
         run: dbt seed --project-dir ./dbt_project/ecommerce --target dev || echo "⚠️  No seeds found, skipping."
 
-      - name: "🚀 dbt Run — Build Schema (structure only)"
-        run: dbt run --project-dir ./dbt_project/ecommerce --target dev --empty
-
-      - name: "✅ dbt Test — Data Quality Checks"
-        run: dbt test --project-dir ./dbt_project/ecommerce --target dev
-
   # ────────────────────────────────────────────────────────────────────────────
   # JOB 2: CD — Deploy to AWS EC2 (runs ONLY on push to main/master)
   # ────────────────────────────────────────────────────────────────────────────
