@@ -4,6 +4,7 @@ with source as (
     select *
     from {{ source('raw', 'category_translation') }}
 ),
+
 renamed as (
     select
         product_category_name,

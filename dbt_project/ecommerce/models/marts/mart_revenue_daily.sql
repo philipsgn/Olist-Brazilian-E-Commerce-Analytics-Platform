@@ -14,25 +14,20 @@
     ]
 ) }}
 
--- 2. QUERY OPTIMIZATION & PRE-AGGREGATION
--- We aggregate metrics at the grain of (date_day, product_id, customer_id)
--- BEFORE performing joins with heavy dimension tables.
+-- Pre-aggregate at grain (date, product, customer) BEFORE joining heavy dims
 with aggregated_fact as (
-    select 
+    select
         order_date_id,
         product_id,
         customer_id,
         count(distinct order_id) as total_orders,
         sum(price) as gross_revenue,
         sum(freight_value) as freight_cost,
-        sum(price + freight_value) as total_revenue,
-        count(distinct order_id) as orders_count, -- used for grouping
-        array_agg(distinct order_id) as raw_order_ids -- slightly complex for count(distinct)
+        sum(price + freight_value) as total_revenue
     from {{ ref('fact_order_items') }}
-    group by 1, 2, 3
+    group by order_date_id, product_id, customer_id
 ),
 
--- Standardizing the fact for easier join
 fact_collapsed as (
     select
         order_date_id,
@@ -43,11 +38,17 @@ fact_collapsed as (
         sum(total_revenue) as total_revenue,
         sum(total_orders) as total_orders
     from aggregated_fact
-    group by 1, 2, 3
+    group by order_date_id, product_id, customer_id
 ),
 
 dim_date as (
-    select date_id, year, month, quarter, day from {{ ref('dim_date') }}
+    select
+        date_id,
+        year_number,
+        month_number,
+        quarter_number,
+        day_number
+    from {{ ref('dim_date') }}
 ),
 
 dim_products as (
@@ -61,10 +62,10 @@ dim_customers as (
 joined as (
     select
         d.date_id as date_day,
-        d.year,
-        d.month,
-        d.quarter,
-        d.day,
+        d.year_number,
+        d.month_number,
+        d.quarter_number,
+        d.day_number,
         p.product_category,
         c.customer_state,
         f.gross_revenue,
@@ -72,30 +73,38 @@ joined as (
         f.total_revenue,
         f.total_orders,
         f.customer_id
+    from fact_collapsed as f
+    inner join dim_date as d on f.order_date_id = d.date_id
+    inner join dim_products as p on f.product_id = p.product_id
+    inner join dim_customers as c on f.customer_id = c.customer_id
+),
 
-    from fact_collapsed f
-    join dim_date     d on f.order_date_id  = d.date_id
-    join dim_products p on f.product_id     = p.product_id
-    join dim_customers c on f.customer_id   = c.customer_id
+final as (
+    select
+        date_day,
+        year_number,
+        month_number,
+        quarter_number,
+        day_number,
+        product_category,
+        customer_state,
+        -- Final Aggregation
+        round(sum(gross_revenue)::numeric, 2) as gross_revenue,
+        round(sum(freight_cost)::numeric, 2) as freight_cost,
+        round(sum(total_revenue)::numeric, 2) as total_revenue,
+        sum(total_orders) as total_orders,
+        count(distinct customer_id) as unique_customers,
+        round(avg(gross_revenue)::numeric, 2) as avg_order_value
+    from joined
+    group by
+        date_day,
+        year_number,
+        month_number,
+        quarter_number,
+        day_number,
+        product_category,
+        customer_state
+    order by date_day, product_category
 )
 
-select
-    date_day,
-    year,
-    month,
-    quarter,
-    day,
-    product_category,
-    customer_state,
-
-    -- Final Aggregation
-    round(sum(gross_revenue)::numeric, 2)          as gross_revenue,
-    round(sum(freight_cost)::numeric, 2)            as freight_cost,
-    round(sum(total_revenue)::numeric, 2)          as total_revenue,
-    sum(total_orders)                              as total_orders,
-    count(distinct customer_id)                    as unique_customers,
-    round(avg(gross_revenue)::numeric, 2)          as avg_order_value
-
-from joined
-group by 1, 2, 3, 4, 5, 6, 7
-order by date_day, product_category
+select * from final

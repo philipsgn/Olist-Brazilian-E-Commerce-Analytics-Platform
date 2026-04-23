@@ -22,6 +22,7 @@ with orders as (
         purchased_at
     from {{ ref('stg_orders') }}
 ),
+
 order_payments as (
     select
         order_id,
@@ -30,23 +31,28 @@ order_payments as (
         max_installments,
         payment_types
     from {{ ref('stg_orders_payments') }}
+),
+
+final as (
+    select
+        o.order_id,
+        o.customer_id,
+        date_trunc('day', o.purchased_at)::date as order_date_id,
+        p.payment_total,
+        p.payment_count,
+        p.max_installments,
+        p.payment_types
+    from orders as o
+    inner join order_payments as p on o.order_id = p.order_id
+
+    {% if is_incremental() %}
+    -- Only process records newer than the most recent record in the existing table
+    where
+        date_trunc('day', o.purchased_at)::date >= (
+            select coalesce(max(fp.order_date_id), date '1900-01-01')
+            from {{ this }} as fp
+        )
+    {% endif %}
 )
 
-select
-    o.order_id,
-    o.customer_id,
-    date_trunc('day', o.purchased_at)::date as order_date_id,
-    p.payment_total,
-    p.payment_count,
-    p.max_installments,
-    p.payment_types
-from orders o
-join order_payments p on o.order_id = p.order_id
-
-{% if is_incremental() %}
--- Use a filter on the incoming data source to only join/process 
--- records that are newer than the most recent one in the existing table.
-where date_trunc('day', o.purchased_at)::date >= (
-    select coalesce(max(order_date_id), date '1900-01-01') from {{ this }}
-)
-{% endif %}
+select * from final

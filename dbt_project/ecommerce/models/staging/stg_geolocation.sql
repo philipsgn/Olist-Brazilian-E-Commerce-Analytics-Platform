@@ -4,6 +4,7 @@ with source as (
     select *
     from {{ source('raw', 'geolocation') }}
 ),
+
 renamed as (
     select
         geolocation_zip_code_prefix,

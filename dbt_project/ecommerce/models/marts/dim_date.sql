@@ -1,15 +1,15 @@
 -- dim_date.sql
--- Nâng cấp lên phiên bản "Production-grade": Tự động sinh lịch đến năm 2030
--- Điều này đảm bảo các đơn hàng giả (simulated data) năm 2026-2030 đều được join thành công
+-- Production-grade: Auto-generate calendar up to 2030
+-- Ensures simulated orders (2026-2030) can be joined successfully
 
 {{ config(materialized='table') }}
 
 with date_series as (
-    -- Dùng hàm generate_series của Postgres để tạo ra tất cả các ngày từ 2016 đến 2030
-    select 
+    -- Use Postgres generate_series to create all dates from 2016 to 2030
+    select
         generate_series(
-            '2016-01-01'::date, 
-            '2030-12-31'::date, 
+            '2016-01-01'::date,
+            '2030-12-31'::date,
             '1 day'::interval
         )::date as date_day
 ),
@@ -17,14 +17,14 @@ with date_series as (
 final as (
     select
         date_day as date_id,
-        extract(year from date_day) as year,
-        extract(month from date_day) as month,
-        extract(quarter from date_day) as quarter,
-        extract(day from date_day) as day,
+        extract(year from date_day) as year_number,
+        extract(month from date_day) as month_number,
+        extract(quarter from date_day) as quarter_number,
+        extract(day from date_day) as day_number,
         extract(dow from date_day) as day_of_week,
         to_char(date_day, 'Month') as month_name,
         to_char(date_day, 'Day') as day_name,
-        case when extract(isodow from date_day) in (6, 7) then true else false end as is_weekend
+        coalesce(extract(isodow from date_day) in (6, 7), false) as is_weekend
     from date_series
 )
 

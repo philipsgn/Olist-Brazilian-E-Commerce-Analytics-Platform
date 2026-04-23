@@ -1,14 +1,15 @@
 -- dbt/models/staging/stg_orders.sql
 
 with source as (
-    select 
-        order_id, 
-        customer_id, 
-        order_status, 
-        order_purchase_timestamp, 
-        order_delivered_customer_date 
+    select
+        order_id,
+        customer_id,
+        order_status,
+        order_purchase_timestamp,
+        order_delivered_customer_date
     from {{ source('raw', 'orders') }}
 ),
+
 renamed as (
     select
         order_id,

@@ -4,6 +4,7 @@ with source as (
     select *
     from {{ source('raw', 'payments') }}
 ),
+
 renamed as (
     select
         order_id,

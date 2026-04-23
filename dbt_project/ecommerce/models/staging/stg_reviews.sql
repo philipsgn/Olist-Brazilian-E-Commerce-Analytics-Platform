@@ -4,6 +4,7 @@ with source as (
     select *
     from {{ source('raw', 'reviews') }}
 ),
+
 renamed as (
     select
         review_id,

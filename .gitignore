@@ -45,4 +45,4 @@ Thumbs.db
 postgres_data/
 
 # CI/CD
-.sqlfluff
+# .sqlfluff  <- config file must be tracked, do NOT ignore

@@ -1,0 +1,25 @@
+[sqlfluff]
+dialect = postgres
+templater = dbt
+# Increase line length limit — SQL in dbt projects often has long Jinja refs
+max_line_length = 120
+# Exclude rules that conflict with dbt Jinja templating or are too pedantic
+exclude_rules = RF04, ST06
+
+[sqlfluff:templater:dbt]
+project_dir = ./dbt_project/ecommerce
+
+[sqlfluff:indentation]
+indent_unit = space
+tab_space_size = 4
+
+[sqlfluff:layout:type:comma]
+line_position = trailing
+
+[sqlfluff:rules:aliasing.table]
+# Enforce explicit AS keyword for table aliases
+aliasing = explicit
+
+[sqlfluff:rules:aliasing.column]
+# Enforce explicit AS keyword for column aliases
+aliasing = explicit
