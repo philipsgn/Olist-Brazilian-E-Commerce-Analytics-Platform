@@ -1,29 +1,18 @@
-# ==============================================================================
-# Production CI/CD Pipeline - Olist E-Commerce Data Platform
-# ==============================================================================
-# Job 1 (ci-test): Runs on every push/PR → validates SQL & dbt models
-# Job 2 (deploy):  Runs ONLY on push to main → deploys to AWS EC2
-# ==============================================================================
-
 name: Production Data Pipeline CI/CD
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 
-# Prevent concurrent deploys to the same environment
 concurrency:
   group: production-${{ github.ref }}
   cancel-in-progress: false
 
-# ──────────────────────────────────────────────────────────────────────────────
-# JOB 1: CI — Lint & Test (runs on every push and pull_request)
-# ──────────────────────────────────────────────────────────────────────────────
 jobs:
   ci-test:
-    name: "🧪 CI — Lint & dbt Compile"
+    name: CI - Lint and dbt Compile
     runs-on: ubuntu-latest
 
     services:
@@ -50,58 +39,49 @@ jobs:
       ENVIRONMENT: dev
 
     steps:
-      - name: "📥 Checkout Repository"
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: "🐍 Set up Python 3.10"
+      - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-          cache: 'pip'
+          python-version: "3.10"
+          cache: pip
 
-      - name: "📦 Install SQL Linting Dependencies"
+      - name: Install SQL Linting Dependencies
         run: pip install sqlfluff sqlfluff-templater-dbt
 
-      - name: "🔍 SQL Linting (sqlfluff — jinja templater, no DB required)"
-        run: |
-          sqlfluff lint dbt_project/ecommerce/models --dialect postgres
-        continue-on-error: false
+      - name: SQL Linting
+        run: sqlfluff lint dbt_project/ecommerce/models --dialect postgres
 
-      - name: "📦 Install dbt Dependencies"
+      - name: Install dbt Dependencies
         run: |
           pip install dbt-core dbt-postgres
           dbt deps --project-dir ./dbt_project/ecommerce
 
-      - name: "⚙️ dbt Debug — Validate Connection"
+      - name: dbt Debug
         run: dbt debug --project-dir ./dbt_project/ecommerce --target dev
 
-      - name: "🏗️ dbt Compile — Validate SQL Syntax"
+      - name: dbt Compile
         run: dbt compile --project-dir ./dbt_project/ecommerce --target dev
 
-      - name: "🌱 dbt Seed (if any)"
-        run: dbt seed --project-dir ./dbt_project/ecommerce --target dev || echo "⚠️  No seeds found, skipping."
+      - name: dbt Seed
+        run: dbt seed --project-dir ./dbt_project/ecommerce --target dev || echo "No seeds found, skipping."
 
-  # ────────────────────────────────────────────────────────────────────────────
-  # JOB 2: CD — Deploy to AWS EC2 (runs ONLY on push to main/master)
-  # ────────────────────────────────────────────────────────────────────────────
   deploy:
-    name: "🚀 CD — Deploy to AWS EC2"
+    name: CD - Deploy to AWS EC2
     runs-on: ubuntu-latest
-    needs: ci-test                         # Wait for CI to pass first
-    # Only deploy on direct push to main/master (not on pull requests)
+    needs: ci-test
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     environment:
       name: production
 
     steps:
-      - name: "📥 Checkout Repository"
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # ------------------------------------------------------------------
-      # STEP 1: Package project files (excludes unnecessary/sensitive files)
-      # ------------------------------------------------------------------
-      - name: "📦 Package Project (TAR)"
+      - name: Package Project
         run: |
           tar -czf /tmp/deploy.tar.gz \
             --exclude='.git' \
@@ -122,13 +102,10 @@ jobs:
             --exclude='*.pyc' \
             --exclude='*.pyo' \
             .
-          
+
           mv /tmp/deploy.tar.gz .
 
-      # ------------------------------------------------------------------
-      # STEP 2: Send the packaged file to EC2 via SCP
-      # ------------------------------------------------------------------
-      - name: "📂 Sync Archive to EC2 (SCP)"
+      - name: Sync Archive to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -138,90 +115,102 @@ jobs:
           source: "deploy.tar.gz"
           target: "/home/${{ secrets.EC2_USER }}/"
 
-      # ------------------------------------------------------------------
-      # STEP 3: SSH into EC2, extract files, and run docker-compose
-      # ------------------------------------------------------------------
-      - name: "🐳 Deploy — Extract & docker-compose up on EC2"
+      - name: Deploy on EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
-          # Fail the job if any command in the script fails
           script_stop: true
           script: |
             set -euo pipefail
 
             PROJECT_DIR="/home/${{ secrets.EC2_USER }}/Olist-Brazilian-E-Commerce-Analytics-Platform"
-            echo "📁 Setting up project directory: $PROJECT_DIR"
+            echo "Setting up project directory: $PROJECT_DIR"
             mkdir -p "$PROJECT_DIR"
-            
-            echo "📦 Extracting files..."
+
+            echo "Extracting files..."
             sudo tar -xzf "/home/${{ secrets.EC2_USER }}/deploy.tar.gz" -C "$PROJECT_DIR" --overwrite
             sudo chown -R ${{ secrets.EC2_USER }}:${{ secrets.EC2_USER }} "$PROJECT_DIR"
             rm "/home/${{ secrets.EC2_USER }}/deploy.tar.gz"
 
             cd "$PROJECT_DIR"
 
-            echo "🔍 Verifying docker-compose.yml exists..."
+            echo "Verifying docker-compose.yml exists..."
             if [ ! -f "docker-compose.yml" ]; then
-              echo "❌ ERROR: docker-compose.yml not found in $PROJECT_DIR"
+              echo "ERROR: docker-compose.yml not found in $PROJECT_DIR"
               exit 1
             fi
 
-            echo "🔍 Verifying .env file exists (must be pre-configured on EC2)..."
+            echo "Verifying .env file exists..."
             if [ ! -f ".env" ]; then
-              echo "❌ ERROR: .env file not found. Please create it manually on EC2."
+              echo "ERROR: .env file not found. Please create it manually on EC2."
               exit 1
             fi
 
-            echo "🐳 Pulling latest images and rebuilding containers..."
-            docker compose pull --quiet || true   # Pull upstream base images
-            
-            echo "🧹 Cleaning up existing containers and conflicting native services..."
-            sudo systemctl stop postgresql || true
-            docker compose down || true
-            
-            docker compose up -d --build --remove-orphans
+            if ! grep -q '^POSTGRES_HOST_PORT=' .env; then
+              echo "POSTGRES_HOST_PORT=5433" | sudo tee -a .env >/dev/null
+            fi
 
-            echo "⏳ Waiting 15s for services to stabilize..."
+            if ! grep -q '^POSTGRES_BIND_ADDRESS=' .env; then
+              echo "POSTGRES_BIND_ADDRESS=127.0.0.1" | sudo tee -a .env >/dev/null
+            fi
+
+            echo "Pulling latest images and rebuilding containers..."
+            sudo docker compose pull --quiet || true
+
+            echo "Stopping conflicting native PostgreSQL service if present..."
+            sudo systemctl stop postgresql || true
+
+            echo "Cleaning up previous containers..."
+            sudo docker compose down --remove-orphans || true
+            sudo docker rm -f \
+              de_postgres \
+              de_redis \
+              de_airflow_webserver \
+              de_airflow_scheduler \
+              de_airflow_worker \
+              de_superset \
+              olist-brazilian-e-commerce-analytics-platform-airflow-common-1 || true
+
+            echo "Starting updated stack..."
+            sudo docker compose up -d --build --remove-orphans
+
+            echo "Waiting 15s for services to stabilize..."
             sleep 15
 
-            echo "📊 Current container status:"
-            docker compose ps
+            echo "Current container status:"
+            sudo docker compose ps
 
-            echo "✅ Deployment complete!"
+            echo "Deployment complete."
 
-      # ------------------------------------------------------------------
-      # STEP 3: Notify Discord on success or failure
-      # ------------------------------------------------------------------
-      - name: "🟢 Notify Discord — Deploy Success"
+      - name: Notify Discord - Deploy Success
         if: success()
         uses: appleboy/discord-action@v1.0.0
         with:
           webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
-          color: "3066993"   # Green
+          color: "3066993"
           username: "GitHub Actions Bot"
           message: |
-            ✅ **Deploy SUCCESS** — `${{ github.repository }}`
-            📦 Branch: `${{ github.ref_name }}`
-            👤 Triggered by: `${{ github.actor }}`
-            💬 Commit: ${{ github.event.head_commit.message }}
-            🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Deploy SUCCESS - `${{ github.repository }}`
+            Branch: `${{ github.ref_name }}`
+            Triggered by: `${{ github.actor }}`
+            Commit: ${{ github.event.head_commit.message }}
+            Link: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-      - name: "🔴 Notify Discord — Deploy Failed"
+      - name: Notify Discord - Deploy Failed
         if: failure()
         uses: appleboy/discord-action@v1.0.0
         with:
           webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
-          color: "15158332"  # Red
+          color: "15158332"
           username: "GitHub Actions Bot"
           message: |
-            ❌ **Deploy FAILED** — `${{ github.repository }}`
-            📦 Branch: `${{ github.ref_name }}`
-            👤 Triggered by: `${{ github.actor }}`
-            💬 Commit: ${{ github.event.head_commit.message }}
-            🔗 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Deploy FAILED - `${{ github.repository }}`
+            Branch: `${{ github.ref_name }}`
+            Triggered by: `${{ github.actor }}`
+            Commit: ${{ github.event.head_commit.message }}
+            Link: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
