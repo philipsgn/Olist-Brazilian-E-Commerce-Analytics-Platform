@@ -158,7 +158,8 @@ jobs:
             mkdir -p "$PROJECT_DIR"
             
             echo "📦 Extracting files..."
-            tar -xzf "/home/${{ secrets.EC2_USER }}/deploy.tar.gz" -C "$PROJECT_DIR"
+            sudo tar -xzf "/home/${{ secrets.EC2_USER }}/deploy.tar.gz" -C "$PROJECT_DIR" --overwrite
+            sudo chown -R ${{ secrets.EC2_USER }}:${{ secrets.EC2_USER }} "$PROJECT_DIR"
             rm "/home/${{ secrets.EC2_USER }}/deploy.tar.gz"
 
             cd "$PROJECT_DIR"
