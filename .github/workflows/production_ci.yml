@@ -149,12 +149,40 @@ jobs:
               exit 1
             fi
 
-            if ! grep -q '^POSTGRES_HOST_PORT=' .env; then
+            if grep -q '^POSTGRES_PORT=' .env; then
+              sudo sed -i 's/^POSTGRES_PORT=.*/POSTGRES_PORT=5432/' .env
+            else
+              echo "POSTGRES_PORT=5432" | sudo tee -a .env >/dev/null
+            fi
+
+            if grep -q '^POSTGRES_HOST_PORT=' .env; then
+              sudo sed -i 's/^POSTGRES_HOST_PORT=.*/POSTGRES_HOST_PORT=5433/' .env
+            else
               echo "POSTGRES_HOST_PORT=5433" | sudo tee -a .env >/dev/null
             fi
 
             if ! grep -q '^POSTGRES_BIND_ADDRESS=' .env; then
               echo "POSTGRES_BIND_ADDRESS=127.0.0.1" | sudo tee -a .env >/dev/null
+            fi
+
+            if grep -q '^AIRFLOW_WEBSERVER_HOST_PORT=' .env; then
+              sudo sed -i 's/^AIRFLOW_WEBSERVER_HOST_PORT=.*/AIRFLOW_WEBSERVER_HOST_PORT=8080/' .env
+            else
+              echo "AIRFLOW_WEBSERVER_HOST_PORT=8080" | sudo tee -a .env >/dev/null
+            fi
+
+            if ! grep -q '^AIRFLOW_BIND_ADDRESS=' .env; then
+              echo "AIRFLOW_BIND_ADDRESS=0.0.0.0" | sudo tee -a .env >/dev/null
+            fi
+
+            if grep -q '^SUPERSET_HOST_PORT=' .env; then
+              sudo sed -i 's/^SUPERSET_HOST_PORT=.*/SUPERSET_HOST_PORT=8089/' .env
+            else
+              echo "SUPERSET_HOST_PORT=8089" | sudo tee -a .env >/dev/null
+            fi
+
+            if ! grep -q '^SUPERSET_BIND_ADDRESS=' .env; then
+              echo "SUPERSET_BIND_ADDRESS=0.0.0.0" | sudo tee -a .env >/dev/null
             fi
 
             echo "Pulling latest images and rebuilding containers..."
