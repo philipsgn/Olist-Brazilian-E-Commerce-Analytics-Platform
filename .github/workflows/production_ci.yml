@@ -126,7 +126,7 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
-            echo "Deploy script version: 2026-04-23.5"
+            echo "Deploy script version: 2026-04-23.6"
 
             PROJECT_DIR="/home/${{ secrets.EC2_USER }}/Olist-Brazilian-E-Commerce-Analytics-Platform"
             echo "Setting up project directory: $PROJECT_DIR"
@@ -160,12 +160,28 @@ jobs:
             fi
 
             echo "Normalizing .env for Docker networking and host port bindings..."
+            echo "Current .env file details before update:"
+            sudo ls -l .env || true
             upsert_env() {
               local key="$1"
               local value="$2"
               if sudo grep -q "^${key}=" .env; then
                 echo "Updating ${key}=${value}"
-                sudo sed -i "s|^${key}=.*|${key}=${value}|" .env
+                sudo awk -v key="$key" -v value="$value" '
+                  BEGIN { updated = 0 }
+                  $0 ~ ("^" key "=") {
+                    print key "=" value
+                    updated = 1
+                    next
+                  }
+                  { print }
+                  END {
+                    if (!updated) {
+                      exit 1
+                    }
+                  }
+                ' .env | sudo tee .env.tmp >/dev/null
+                sudo mv .env.tmp .env
               else
                 echo "Adding ${key}=${value}"
                 printf '%s\n' "${key}=${value}" | sudo tee -a .env >/dev/null
