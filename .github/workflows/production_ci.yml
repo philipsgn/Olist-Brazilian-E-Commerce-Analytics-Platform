@@ -151,41 +151,29 @@ jobs:
               exit 1
             fi
 
-            if grep -q '^POSTGRES_PORT=' .env; then
-              sudo sed -i 's/^POSTGRES_PORT=.*/POSTGRES_PORT=5432/' .env
-            else
-              echo "POSTGRES_PORT=5432" | sudo tee -a .env >/dev/null
-            fi
+            echo "Normalizing .env for Docker networking and host port bindings..."
+            upsert_env() {
+              local key="$1"
+              local value="$2"
+              if sudo grep -q "^${key}=" .env; then
+                echo "Updating ${key}=${value}"
+                sudo sed -i "s|^${key}=.*|${key}=${value}|" .env
+              else
+                echo "Adding ${key}=${value}"
+                printf '%s\n' "${key}=${value}" | sudo tee -a .env >/dev/null
+              fi
+            }
 
-            if grep -q '^POSTGRES_HOST_PORT=' .env; then
-              sudo sed -i 's/^POSTGRES_HOST_PORT=.*/POSTGRES_HOST_PORT=5433/' .env
-            else
-              echo "POSTGRES_HOST_PORT=5433" | sudo tee -a .env >/dev/null
-            fi
+            upsert_env "POSTGRES_PORT" "5432"
+            upsert_env "POSTGRES_HOST_PORT" "5433"
+            upsert_env "POSTGRES_BIND_ADDRESS" "127.0.0.1"
+            upsert_env "AIRFLOW_WEBSERVER_HOST_PORT" "8080"
+            upsert_env "AIRFLOW_BIND_ADDRESS" "0.0.0.0"
+            upsert_env "SUPERSET_HOST_PORT" "8088"
+            upsert_env "SUPERSET_BIND_ADDRESS" "0.0.0.0"
 
-            if ! grep -q '^POSTGRES_BIND_ADDRESS=' .env; then
-              echo "POSTGRES_BIND_ADDRESS=127.0.0.1" | sudo tee -a .env >/dev/null
-            fi
-
-            if grep -q '^AIRFLOW_WEBSERVER_HOST_PORT=' .env; then
-              sudo sed -i 's/^AIRFLOW_WEBSERVER_HOST_PORT=.*/AIRFLOW_WEBSERVER_HOST_PORT=8080/' .env
-            else
-              echo "AIRFLOW_WEBSERVER_HOST_PORT=8080" | sudo tee -a .env >/dev/null
-            fi
-
-            if ! grep -q '^AIRFLOW_BIND_ADDRESS=' .env; then
-              echo "AIRFLOW_BIND_ADDRESS=0.0.0.0" | sudo tee -a .env >/dev/null
-            fi
-
-            if grep -q '^SUPERSET_HOST_PORT=' .env; then
-              sudo sed -i 's/^SUPERSET_HOST_PORT=.*/SUPERSET_HOST_PORT=8088/' .env
-            else
-              echo "SUPERSET_HOST_PORT=8088" | sudo tee -a .env >/dev/null
-            fi
-
-            if ! grep -q '^SUPERSET_BIND_ADDRESS=' .env; then
-              echo "SUPERSET_BIND_ADDRESS=0.0.0.0" | sudo tee -a .env >/dev/null
-            fi
+            echo "Resolved port-related values from .env:"
+            sudo grep -E '^(POSTGRES_PORT|POSTGRES_HOST_PORT|POSTGRES_BIND_ADDRESS|AIRFLOW_WEBSERVER_HOST_PORT|AIRFLOW_BIND_ADDRESS|SUPERSET_HOST_PORT|SUPERSET_BIND_ADDRESS)=' .env || true
 
             echo "Checking whether host port 8088 is safe to use for Superset..."
             EXISTING_SUPERSET_CONTAINER="$(sudo docker ps --filter publish=8088 --format '{{.Names}}' || true)"
