@@ -59,15 +59,18 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
-      - name: "📦 Install dbt & Linting Dependencies"
-        run: |
-          pip install dbt-core dbt-postgres sqlfluff sqlfluff-templater-dbt
-          dbt deps --project-dir ./dbt_project/ecommerce
+      - name: "📦 Install SQL Linting Dependencies"
+        run: pip install sqlfluff sqlfluff-templater-dbt
 
-      - name: "🔍 SQL Linting (sqlfluff)"
+      - name: "🔍 SQL Linting (sqlfluff — jinja templater, no DB required)"
         run: |
           sqlfluff lint dbt_project/ecommerce/models --dialect postgres
         continue-on-error: false
+
+      - name: "📦 Install dbt Dependencies"
+        run: |
+          pip install dbt-core dbt-postgres
+          dbt deps --project-dir ./dbt_project/ecommerce
 
       - name: "⚙️ dbt Debug — Validate Connection"
         run: dbt debug --project-dir ./dbt_project/ecommerce --target dev
