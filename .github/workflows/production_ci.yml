@@ -126,7 +126,7 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
-            echo "Deploy script version: 2026-04-23.6"
+            echo "Deploy script version: 2026-04-23.7"
 
             PROJECT_DIR="/home/${{ secrets.EC2_USER }}/Olist-Brazilian-E-Commerce-Analytics-Platform"
             echo "Setting up project directory: $PROJECT_DIR"
@@ -167,21 +167,7 @@ jobs:
               local value="$2"
               if sudo grep -q "^${key}=" .env; then
                 echo "Updating ${key}=${value}"
-                sudo awk -v key="$key" -v value="$value" '
-                  BEGIN { updated = 0 }
-                  $0 ~ ("^" key "=") {
-                    print key "=" value
-                    updated = 1
-                    next
-                  }
-                  { print }
-                  END {
-                    if (!updated) {
-                      exit 1
-                    }
-                  }
-                ' .env | sudo tee .env.tmp >/dev/null
-                sudo mv .env.tmp .env
+                sudo perl -0pi -e "s/^\\Q${key}\\E=.*/${key}=${value}/m" .env
               else
                 echo "Adding ${key}=${value}"
                 printf '%s\n' "${key}=${value}" | sudo tee -a .env >/dev/null
