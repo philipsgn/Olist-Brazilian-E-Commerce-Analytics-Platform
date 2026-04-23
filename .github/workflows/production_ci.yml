@@ -176,13 +176,33 @@ jobs:
             fi
 
             if grep -q '^SUPERSET_HOST_PORT=' .env; then
-              sudo sed -i 's/^SUPERSET_HOST_PORT=.*/SUPERSET_HOST_PORT=8089/' .env
+              sudo sed -i 's/^SUPERSET_HOST_PORT=.*/SUPERSET_HOST_PORT=8088/' .env
             else
-              echo "SUPERSET_HOST_PORT=8089" | sudo tee -a .env >/dev/null
+              echo "SUPERSET_HOST_PORT=8088" | sudo tee -a .env >/dev/null
             fi
 
             if ! grep -q '^SUPERSET_BIND_ADDRESS=' .env; then
               echo "SUPERSET_BIND_ADDRESS=0.0.0.0" | sudo tee -a .env >/dev/null
+            fi
+
+            echo "Checking whether host port 8088 is safe to use for Superset..."
+            EXISTING_SUPERSET_CONTAINER="$(sudo docker ps --filter publish=8088 --format '{{.Names}}' || true)"
+            if [ -n "$EXISTING_SUPERSET_CONTAINER" ]; then
+              if [ "$EXISTING_SUPERSET_CONTAINER" = "de_superset" ]; then
+                echo "Found previous de_superset container on port 8088. Removing it before deploy..."
+                sudo docker rm -f de_superset || true
+              else
+                echo "ERROR: host port 8088 is already published by another container: $EXISTING_SUPERSET_CONTAINER"
+                echo "Refusing to stop unrelated container. Please free port 8088 on EC2 and rerun deploy."
+                exit 1
+              fi
+            fi
+
+            if sudo ss -ltnp | grep -q ':8088 '; then
+              echo "ERROR: host port 8088 is being used by a non-stack process on EC2."
+              echo "Listener details:"
+              sudo ss -ltnp | grep ':8088 ' || true
+              exit 1
             fi
 
             echo "Pulling latest images and rebuilding containers..."

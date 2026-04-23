@@ -81,7 +81,7 @@ services:
     restart: unless-stopped
     user: "root" # Ensure write permission to the mounted superset_home volume
     ports:
-      - "${SUPERSET_BIND_ADDRESS:-0.0.0.0}:${SUPERSET_HOST_PORT:-8089}:8088"
+      - "${SUPERSET_BIND_ADDRESS:-0.0.0.0}:${SUPERSET_HOST_PORT:-8088}:8088"
     depends_on:
       postgres: { condition: service_healthy }
     environment:
