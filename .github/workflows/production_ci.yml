@@ -126,7 +126,7 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
-            echo "Deploy script version: 2026-04-23.7"
+            echo "Deploy script version: 2026-04-23.8"
 
             PROJECT_DIR="/home/${{ secrets.EC2_USER }}/Olist-Brazilian-E-Commerce-Analytics-Platform"
             echo "Setting up project directory: $PROJECT_DIR"
@@ -162,25 +162,7 @@ jobs:
             echo "Normalizing .env for Docker networking and host port bindings..."
             echo "Current .env file details before update:"
             sudo ls -l .env || true
-            upsert_env() {
-              local key="$1"
-              local value="$2"
-              if sudo grep -q "^${key}=" .env; then
-                echo "Updating ${key}=${value}"
-                sudo perl -0pi -e "s/^\\Q${key}\\E=.*/${key}=${value}/m" .env
-              else
-                echo "Adding ${key}=${value}"
-                printf '%s\n' "${key}=${value}" | sudo tee -a .env >/dev/null
-              fi
-            }
-
-            upsert_env "POSTGRES_PORT" "5432"
-            upsert_env "POSTGRES_HOST_PORT" "5433"
-            upsert_env "POSTGRES_BIND_ADDRESS" "127.0.0.1"
-            upsert_env "AIRFLOW_WEBSERVER_HOST_PORT" "8080"
-            upsert_env "AIRFLOW_BIND_ADDRESS" "0.0.0.0"
-            upsert_env "SUPERSET_HOST_PORT" "8088"
-            upsert_env "SUPERSET_BIND_ADDRESS" "0.0.0.0"
+            sudo python3 -c "from pathlib import Path; p=Path('.env'); updates={'POSTGRES_PORT':'5432','POSTGRES_HOST_PORT':'5433','POSTGRES_BIND_ADDRESS':'127.0.0.1','AIRFLOW_WEBSERVER_HOST_PORT':'8080','AIRFLOW_BIND_ADDRESS':'0.0.0.0','SUPERSET_HOST_PORT':'8088','SUPERSET_BIND_ADDRESS':'0.0.0.0'}; lines=p.read_text(encoding='utf-8').splitlines(); kept=[line for line in lines if not any(line.startswith(f'{k}=') for k in updates)]; kept.extend(f'{k}={v}' for k,v in updates.items()); p.write_text('\n'.join(kept)+'\n', encoding='utf-8')"
 
             echo "Resolved port-related values from .env:"
             sudo grep -E '^(POSTGRES_PORT|POSTGRES_HOST_PORT|POSTGRES_BIND_ADDRESS|AIRFLOW_WEBSERVER_HOST_PORT|AIRFLOW_BIND_ADDRESS|SUPERSET_HOST_PORT|SUPERSET_BIND_ADDRESS)=' .env || true
