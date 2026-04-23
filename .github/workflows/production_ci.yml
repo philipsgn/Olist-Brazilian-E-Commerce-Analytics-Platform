@@ -178,6 +178,11 @@ jobs:
 
             echo "🐳 Pulling latest images and rebuilding containers..."
             docker compose pull --quiet || true   # Pull upstream base images
+            
+            echo "🧹 Cleaning up existing containers and conflicting native services..."
+            sudo systemctl stop postgresql || true
+            docker compose down || true
+            
             docker compose up -d --build --remove-orphans
 
             echo "⏳ Waiting 15s for services to stabilize..."
