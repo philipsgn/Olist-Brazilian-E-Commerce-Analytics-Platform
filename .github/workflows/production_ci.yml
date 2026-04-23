@@ -126,7 +126,7 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
-            echo "Deploy script version: 2026-04-23.4"
+            echo "Deploy script version: 2026-04-23.5"
 
             PROJECT_DIR="/home/${{ secrets.EC2_USER }}/Olist-Brazilian-E-Commerce-Analytics-Platform"
             echo "Setting up project directory: $PROJECT_DIR"
@@ -148,6 +148,14 @@ jobs:
             echo "Verifying .env file exists..."
             if [ ! -f ".env" ]; then
               echo "ERROR: .env file not found. Please create it manually on EC2."
+              exit 1
+            fi
+
+            if ! sudo test -r ".env"; then
+              echo "ERROR: .env exists but is not readable by the current deploy user."
+              echo "Current file details:"
+              ls -l .env || true
+              sudo ls -l .env || true
               exit 1
             fi
 
