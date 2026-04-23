@@ -96,7 +96,6 @@ jobs:
 
     environment:
       name: production
-      url: "http://${{ secrets.EC2_HOST }}:8080"   # Airflow Webserver URL
 
     steps:
       - name: "📥 Checkout Repository"
