@@ -104,6 +104,7 @@ jobs:
       - name: "📦 Package Project (TAR)"
         run: |
           tar -czf deploy.tar.gz \
+            --exclude='deploy.tar.gz' \
             --exclude='.git' \
             --exclude='__pycache__' \
             --exclude='.env' \
