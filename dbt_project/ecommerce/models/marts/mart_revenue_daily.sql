@@ -52,11 +52,17 @@ dim_date as (
 ),
 
 dim_products as (
-    select product_id, product_category from {{ ref('dim_products') }}
+    select
+        product_id,
+        product_category
+    from {{ ref('dim_products') }}
 ),
 
 dim_customers as (
-    select customer_id, customer_state from {{ ref('dim_customers') }}
+    select
+        customer_id,
+        customer_state
+    from {{ ref('dim_customers') }}
 ),
 
 joined as (

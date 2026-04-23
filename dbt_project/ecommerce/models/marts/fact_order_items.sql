@@ -49,11 +49,11 @@ final as (
     inner join orders as o on oi.order_id = o.order_id
 
     {% if is_incremental() %}
-    where
-        date_trunc('day', o.purchased_at)::date >= (
-            select coalesce(max(oi2.order_date_id), date '1900-01-01')
-            from {{ this }} as oi2
-        )
+        where
+            date_trunc('day', o.purchased_at)::date >= (
+                select coalesce(max(oi2.order_date_id), date '1900-01-01')
+                from {{ this }} as oi2
+            )
     {% endif %}
 )
 

@@ -46,12 +46,12 @@ final as (
     inner join order_payments as p on o.order_id = p.order_id
 
     {% if is_incremental() %}
-    -- Only process records newer than the most recent record in the existing table
-    where
-        date_trunc('day', o.purchased_at)::date >= (
-            select coalesce(max(fp.order_date_id), date '1900-01-01')
-            from {{ this }} as fp
-        )
+        -- Only process records newer than the most recent record in the existing table
+        where
+            date_trunc('day', o.purchased_at)::date >= (
+                select coalesce(max(fp.order_date_id), date '1900-01-01')
+                from {{ this }} as fp
+            )
     {% endif %}
 )
 
