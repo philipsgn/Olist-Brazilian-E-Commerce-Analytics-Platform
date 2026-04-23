@@ -5,6 +5,7 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
 
 concurrency:
   group: production-${{ github.ref }}
@@ -125,6 +126,7 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
+            echo "Deploy script version: 2026-04-23.4"
 
             PROJECT_DIR="/home/${{ secrets.EC2_USER }}/Olist-Brazilian-E-Commerce-Analytics-Platform"
             echo "Setting up project directory: $PROJECT_DIR"
