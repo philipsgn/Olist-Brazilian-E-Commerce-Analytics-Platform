@@ -79,29 +79,35 @@ jobs:
 
       - name: Package Project for EC2
         run: |
-          tar -czf deploy.tar.gz \
-            --exclude='.git' \
-            --exclude='.github' \
+          STAGING_DIR="$(mktemp -d)"
+          ARCHIVE_PATH="${RUNNER_TEMP}/deploy.tar.gz"
+
+          rsync -a --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
             --exclude='.env' \
             --exclude='.env.*' \
-            --exclude='.env.local' \
-            --exclude='__pycache__' \
-            --exclude='*/__pycache__' \
+            --exclude='__pycache__/' \
             --exclude='*.pyc' \
             --exclude='*.pyo' \
-            --exclude='.pytest_cache' \
-            --exclude='.mypy_cache' \
-            --exclude='.ruff_cache' \
-            --exclude='.venv' \
+            --exclude='.pytest_cache/' \
+            --exclude='.mypy_cache/' \
+            --exclude='.ruff_cache/' \
+            --exclude='.venv/' \
             --exclude='*.log' \
-            --exclude='airflow/logs' \
-            --exclude='dbt_project/ecommerce/logs' \
-            --exclude='dbt_project/ecommerce/target' \
-            --exclude='dbt_project/ecommerce/dbt_packages' \
-            --exclude='logs' \
-            --exclude='tmp' \
-            --exclude='postgres_data' \
-            .
+            --exclude='airflow/logs/' \
+            --exclude='dbt_project/ecommerce/logs/' \
+            --exclude='dbt_project/ecommerce/target/' \
+            --exclude='dbt_project/ecommerce/dbt_packages/' \
+            --exclude='logs/' \
+            --exclude='tmp/' \
+            --exclude='postgres_data/' \
+            --exclude='deploy.tar.gz' \
+            ./ "${STAGING_DIR}/"
+
+          tar -czf "${ARCHIVE_PATH}" -C "${STAGING_DIR}" .
+          rm -rf "${STAGING_DIR}"
+          cp "${ARCHIVE_PATH}" ./deploy.tar.gz
 
       - name: Copy Release Bundle to EC2
         uses: appleboy/scp-action@v0.1.7
