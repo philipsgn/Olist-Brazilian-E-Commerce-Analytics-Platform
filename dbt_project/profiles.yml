@@ -7,10 +7,10 @@ ecommerce:
     # --- PRODUCTION ENVIRONMENT (AWS RDS Singapore) ---
     prod:
       type: postgres
-      host: "{{ env_var('RDS_HOST', 'olist-de-db.c34iaimu4kqz.ap-southeast-1.rds.amazonaws.com') }}"
-      port: 5432
-      user: "{{ env_var('RDS_USER', 'de_user') }}"
-      password: "{{ env_var('DBT_ENV_SECRET_RDS_PASSWORD', 'de_password') }}"
+      host: "{{ env_var('RDS_HOST') }}"
+      port: "{{ env_var('RDS_PORT', '5432') | int }}"
+      user: "{{ env_var('RDS_USER') }}"
+      password: "{{ env_var('DBT_ENV_SECRET_RDS_PASSWORD') }}"
       dbname: "{{ env_var('RDS_DBNAME', 'ecommerce_db') }}"
       schema: analytics
       threads: 8
@@ -25,11 +25,11 @@ ecommerce:
     # --- DEVELOPMENT ENVIRONMENT (Local/Staging) ---
     dev:
       type: postgres
-      host: "{{ env_var('RDS_HOST', 'localhost') }}"
-      port: 5432
-      user: "{{ env_var('RDS_USER', 'de_user') }}"
-      password: "{{ env_var('DBT_ENV_SECRET_RDS_PASSWORD', 'de_password') }}"
-      dbname: "{{ env_var('RDS_DBNAME', 'ecommerce_db') }}"
-      schema: dev_pht
+      host: "{{ env_var('DBT_DEV_HOST', 'localhost') }}"
+      port: "{{ env_var('DBT_DEV_PORT', '5432') | int }}"
+      user: "{{ env_var('DBT_DEV_USER', 'de_user') }}"
+      password: "{{ env_var('DBT_DEV_PASSWORD', 'de_password') }}"
+      dbname: "{{ env_var('DBT_DEV_DBNAME', 'ecommerce_db') }}"
+      schema: "{{ env_var('DBT_DEV_SCHEMA', 'analytics_dev') }}"
       threads: 4
       keepalives_idle: 0

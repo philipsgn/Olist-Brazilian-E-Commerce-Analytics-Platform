@@ -2,10 +2,8 @@ name: Production Data Pipeline CI/CD
 
 on:
   push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
-  workflow_dispatch:
+    branches:
+      - main
 
 concurrency:
   group: production-${{ github.ref }}
@@ -26,18 +24,20 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U de_user -d ecommerce_db"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
 
     env:
       DBT_PROFILES_DIR: ./dbt_project
-      RDS_HOST: localhost
-      RDS_USER: de_user
-      DBT_ENV_SECRET_RDS_PASSWORD: de_password
-      RDS_DBNAME: ecommerce_db
-      ENVIRONMENT: dev
+      DBT_DEV_HOST: localhost
+      DBT_DEV_PORT: 5432
+      DBT_DEV_USER: de_user
+      DBT_DEV_PASSWORD: de_password
+      DBT_DEV_DBNAME: ecommerce_db
+      DBT_DEV_SCHEMA: analytics_ci
+      ENVIRONMENT: ci
 
     steps:
       - name: Checkout Repository
@@ -66,15 +66,10 @@ jobs:
       - name: dbt Compile
         run: dbt compile --project-dir ./dbt_project/ecommerce --target dev
 
-      - name: dbt Seed
-        run: dbt seed --project-dir ./dbt_project/ecommerce --target dev || echo "No seeds found, skipping."
-
   deploy:
     name: CD - Deploy to AWS EC2
     runs-on: ubuntu-latest
     needs: ci-test
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-
     environment:
       name: production
 
@@ -82,31 +77,33 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Package Project
+      - name: Package Project for EC2
         run: |
-          tar -czf /tmp/deploy.tar.gz \
+          tar -czf deploy.tar.gz \
             --exclude='.git' \
-            --exclude='__pycache__' \
+            --exclude='.github' \
             --exclude='.env' \
+            --exclude='.env.*' \
             --exclude='.env.local' \
-            --exclude='*.pem' \
-            --exclude='*.key' \
-            --exclude='secrets' \
-            --exclude='logs' \
+            --exclude='__pycache__' \
+            --exclude='*/__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='*.pyo' \
+            --exclude='.pytest_cache' \
+            --exclude='.mypy_cache' \
+            --exclude='.ruff_cache' \
+            --exclude='.venv' \
+            --exclude='*.log' \
             --exclude='airflow/logs' \
             --exclude='dbt_project/ecommerce/logs' \
             --exclude='dbt_project/ecommerce/target' \
             --exclude='dbt_project/ecommerce/dbt_packages' \
-            --exclude='postgres_data' \
+            --exclude='logs' \
             --exclude='tmp' \
-            --exclude='*.checkpoint' \
-            --exclude='*.pyc' \
-            --exclude='*.pyo' \
+            --exclude='postgres_data' \
             .
 
-          mv /tmp/deploy.tar.gz .
-
-      - name: Sync Archive to EC2
+      - name: Copy Release Bundle to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -124,123 +121,93 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
           script_stop: true
+          command_timeout: 30m
           script: |
             set -euo pipefail
-            echo "Deploy script version: 2026-04-23.8"
 
             PROJECT_DIR="/home/${{ secrets.EC2_USER }}/Olist-Brazilian-E-Commerce-Analytics-Platform"
-            echo "Setting up project directory: $PROJECT_DIR"
-            mkdir -p "$PROJECT_DIR"
+            ARCHIVE_PATH="/home/${{ secrets.EC2_USER }}/deploy.tar.gz"
+            RELEASE_DIR="/home/${{ secrets.EC2_USER }}/deploy_release"
 
-            echo "Extracting files..."
-            sudo tar -xzf "/home/${{ secrets.EC2_USER }}/deploy.tar.gz" -C "$PROJECT_DIR" --overwrite
-            sudo chown -R ${{ secrets.EC2_USER }}:${{ secrets.EC2_USER }} "$PROJECT_DIR"
-            rm "/home/${{ secrets.EC2_USER }}/deploy.tar.gz"
+            echo "Preparing release directory: ${PROJECT_DIR}"
+            mkdir -p "${PROJECT_DIR}"
+            rm -rf "${RELEASE_DIR}"
+            mkdir -p "${RELEASE_DIR}"
 
-            cd "$PROJECT_DIR"
+            echo "Extracting release bundle..."
+            tar -xzf "${ARCHIVE_PATH}" -C "${RELEASE_DIR}"
+            rm -f "${ARCHIVE_PATH}"
 
-            echo "Verifying docker-compose.yml exists..."
-            if [ ! -f "docker-compose.yml" ]; then
-              echo "ERROR: docker-compose.yml not found in $PROJECT_DIR"
+            if ! command -v rsync >/dev/null 2>&1; then
+              echo "ERROR: rsync is required on EC2 for clean deployments."
               exit 1
             fi
 
-            echo "Verifying .env file exists..."
-            if [ ! -f ".env" ]; then
-              echo "ERROR: .env file not found. Please create it manually on EC2."
+            echo "Syncing release into project directory..."
+            rsync -a --delete \
+              --exclude='.env' \
+              --exclude='airflow/logs/' \
+              --exclude='superset_home/' \
+              --exclude='tmp/' \
+              "${RELEASE_DIR}/" "${PROJECT_DIR}/"
+            rm -rf "${RELEASE_DIR}"
+            sudo chown -R ${{ secrets.EC2_USER }}:${{ secrets.EC2_USER }} "${PROJECT_DIR}"
+
+            cd "${PROJECT_DIR}"
+
+            if [ ! -f docker-compose.yml ]; then
+              echo "ERROR: docker-compose.yml is missing from ${PROJECT_DIR}"
               exit 1
             fi
 
-            if ! sudo test -r ".env"; then
-              echo "ERROR: .env exists but is not readable by the current deploy user."
-              echo "Current file details:"
-              ls -l .env || true
-              sudo ls -l .env || true
+            if [ ! -f .env ]; then
+              echo "ERROR: .env must be pre-created on EC2 before deployment."
               exit 1
             fi
 
-            echo "Normalizing .env for Docker networking and host port bindings..."
-            echo "Current .env file details before update:"
-            sudo ls -l .env || true
-            sudo python3 -c "from pathlib import Path; p=Path('.env'); updates={'POSTGRES_PORT':'5432','POSTGRES_HOST_PORT':'5433','POSTGRES_BIND_ADDRESS':'127.0.0.1','AIRFLOW_WEBSERVER_HOST_PORT':'8080','AIRFLOW_BIND_ADDRESS':'0.0.0.0','SUPERSET_HOST_PORT':'8088','SUPERSET_BIND_ADDRESS':'0.0.0.0'}; lines=p.read_text(encoding='utf-8').splitlines(); kept=[line for line in lines if not any(line.startswith(f'{k}=') for k in updates)]; kept.extend(f'{k}={v}' for k,v in updates.items()); p.write_text('\n'.join(kept)+'\n', encoding='utf-8')"
-
-            echo "Resolved port-related values from .env:"
-            sudo grep -E '^(POSTGRES_PORT|POSTGRES_HOST_PORT|POSTGRES_BIND_ADDRESS|AIRFLOW_WEBSERVER_HOST_PORT|AIRFLOW_BIND_ADDRESS|SUPERSET_HOST_PORT|SUPERSET_BIND_ADDRESS)=' .env || true
-
-            echo "Checking whether host port 8088 is safe to use for Superset..."
-            EXISTING_SUPERSET_CONTAINER="$(sudo docker ps --filter publish=8088 --format '{{.Names}}' || true)"
-            if [ -n "$EXISTING_SUPERSET_CONTAINER" ]; then
-              if [ "$EXISTING_SUPERSET_CONTAINER" = "de_superset" ]; then
-                echo "Found previous de_superset container on port 8088. Removing it before deploy..."
-                sudo docker rm -f de_superset || true
-              else
-                echo "ERROR: host port 8088 is already published by another container: $EXISTING_SUPERSET_CONTAINER"
-                echo "Refusing to stop unrelated container. Please free port 8088 on EC2 and rerun deploy."
-                exit 1
-              fi
-            fi
-
-            if sudo ss -ltnp | grep -q ':8088 '; then
-              echo "ERROR: host port 8088 is being used by a non-stack process on EC2."
-              echo "Listener details:"
-              sudo ss -ltnp | grep ':8088 ' || true
-              exit 1
-            fi
-
-            echo "Pulling latest images and rebuilding containers..."
-            sudo docker compose pull --quiet || true
-
-            echo "Stopping conflicting native PostgreSQL service if present..."
-            sudo systemctl stop postgresql || true
-
-            echo "Cleaning up previous containers..."
+            echo "Stopping previous stack..."
             sudo docker compose down --remove-orphans || true
-            sudo docker rm -f \
-              de_postgres \
-              de_redis \
-              de_airflow_webserver \
-              de_airflow_scheduler \
-              de_airflow_worker \
-              de_superset \
-              olist-brazilian-e-commerce-analytics-platform-airflow-common-1 || true
 
             echo "Starting updated stack..."
             sudo docker compose up -d --build --remove-orphans
 
-            echo "Waiting 15s for services to stabilize..."
-            sleep 15
-
-            echo "Current container status:"
+            echo "Current compose status:"
             sudo docker compose ps
 
-            echo "Deployment complete."
+            wait_for_healthy() {
+              local container="$1"
+              local timeout_seconds="$2"
+              local waited=0
 
-      - name: Notify Discord - Deploy Success
-        if: success()
-        uses: appleboy/discord-action@v1.0.0
-        with:
-          webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
-          webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
-          color: "3066993"
-          username: "GitHub Actions Bot"
-          message: |
-            Deploy SUCCESS - `${{ github.repository }}`
-            Branch: `${{ github.ref_name }}`
-            Triggered by: `${{ github.actor }}`
-            Commit: ${{ github.event.head_commit.message }}
-            Link: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              while [ "${waited}" -lt "${timeout_seconds}" ]; do
+                local status
+                status="$(sudo docker inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "${container}" 2>/dev/null || true)"
+                echo "${container} status: ${status}"
 
-      - name: Notify Discord - Deploy Failed
-        if: failure()
-        uses: appleboy/discord-action@v1.0.0
-        with:
-          webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
-          webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
-          color: "15158332"
-          username: "GitHub Actions Bot"
-          message: |
-            Deploy FAILED - `${{ github.repository }}`
-            Branch: `${{ github.ref_name }}`
-            Triggered by: `${{ github.actor }}`
-            Commit: ${{ github.event.head_commit.message }}
-            Link: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+                if [ "${status}" = "running healthy" ]; then
+                  return 0
+                fi
+
+                case "${status}" in
+                  exited*|dead*)
+                    echo "ERROR: ${container} exited before becoming healthy."
+                    sudo docker logs --tail 100 "${container}" || true
+                    return 1
+                    ;;
+                esac
+
+                sleep 10
+                waited=$((waited + 10))
+              done
+
+              echo "ERROR: ${container} did not reach 'running healthy' within ${timeout_seconds}s."
+              sudo docker logs --tail 100 "${container}" || true
+              return 1
+            }
+
+            wait_for_healthy de_airflow_webserver 240
+            wait_for_healthy de_airflow_scheduler 240
+            wait_for_healthy de_airflow_worker 240
+            wait_for_healthy de_superset 300
+
+            echo "Deployment completed successfully."

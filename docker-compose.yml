@@ -1,103 +1,162 @@
+x-service-defaults: &service-defaults
+  restart: always
+  security_opt:
+    # AppArmor may block bind-mounted paths on hardened EC2 hosts during CI/CD deploys.
+    - apparmor:unconfined
+
+x-airflow-common: &airflow-common
+  <<: *service-defaults
+  build:
+    context: .
+    dockerfile: Dockerfile.airflow
+  env_file:
+    - .env
+  user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-0}"
+  environment: &airflow-common-env
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB}"
+    AIRFLOW__CELERY__BROKER_URL: "redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/0"
+    AIRFLOW__CELERY__RESULT_BACKEND: "db+postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB}"
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__CORE__FERNET_KEY: "${AIRFLOW_FERNET_KEY}"
+    AIRFLOW__WEBSERVER__SECRET_KEY: "${AIRFLOW_WEBSERVER_SECRET_KEY}"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    PYTHONPATH: "${PYTHONPATH:-/opt/airflow}"
+  volumes:
+    # Relative mounts keep the stack portable between local, staging, and EC2.
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./airflow/utils:/opt/airflow/utils
+    - ./data:/opt/airflow/data
+    - ./ingestion:/opt/airflow/ingestion
+    - ./dbt_project:/opt/airflow/dbt_project
+    - ./tmp:/opt/airflow/tmp
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
 services:
   postgres:
+    <<: *service-defaults
     image: postgres:15
     container_name: de_postgres
-    restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB}"
     ports:
       - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
+      timeout: 5s
       retries: 5
+      start_period: 20s
 
   redis:
+    <<: *service-defaults
     image: redis:7-alpine
     container_name: de_redis
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
-
-  airflow-common: &airflow-common
-    build:
-      context: .
-      dockerfile: Dockerfile.airflow
-    env_file: .env
-    user: "${AIRFLOW_UID:-50000}:0"
-    environment:
-      &airflow-common-env
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/ecommerce_db
-      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
-      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/ecommerce_db
-      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
-      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_WEBSERVER_SECRET_KEY}
-      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      PYTHONPATH: /opt/airflow
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - ./airflow/logs:/opt/airflow/logs
-      - ./airflow/plugins:/opt/airflow/plugins
-      - ./airflow/utils:/opt/airflow/utils
-      - ./data:/opt/airflow/data
-      - ./ingestion:/opt/airflow/ingestion
-      - ./dbt_project:/opt/airflow/dbt_project
-      - ./tmp:/opt/airflow/tmp
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   airflow-webserver:
     <<: *airflow-common
     container_name: de_airflow_webserver
-    depends_on:
-      postgres: { condition: service_healthy }
-      redis: { condition: service_healthy }
     ports:
       - "${AIRFLOW_BIND_ADDRESS:-0.0.0.0}:${AIRFLOW_WEBSERVER_HOST_PORT:-8080}:8080"
     command: >
-      bash -c "airflow db migrate && airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin123 && airflow webserver"
+      bash -c "airflow db migrate &&
+      airflow users create
+      --username ${AIRFLOW_ADMIN_USER}
+      --firstname ${AIRFLOW_ADMIN_FIRSTNAME}
+      --lastname ${AIRFLOW_ADMIN_LASTNAME}
+      --role Admin
+      --email ${AIRFLOW_ADMIN_EMAIL}
+      --password ${AIRFLOW_ADMIN_PASSWORD} || true &&
+      exec airflow webserver"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   airflow-scheduler:
     <<: *airflow-common
     container_name: de_airflow_scheduler
-    depends_on:
-      postgres: { condition: service_healthy }
-      redis: { condition: service_healthy }
     command: "airflow scheduler"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f \"airflow scheduler\" >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   airflow-worker:
     <<: *airflow-common
     container_name: de_airflow_worker
     depends_on:
-      airflow-scheduler: { condition: service_started }
+      airflow-scheduler:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     command: "airflow celery worker"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f \"airflow celery worker\" >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   superset:
+    <<: *service-defaults
     image: apache/superset
     container_name: de_superset
-    restart: unless-stopped
-    user: "root" # Ensure write permission to the mounted superset_home volume
+    # Superset installs extra Python packages at container start, so root remains practical here.
+    user: "root"
+    env_file:
+      - .env
     ports:
       - "${SUPERSET_BIND_ADDRESS:-0.0.0.0}:${SUPERSET_HOST_PORT:-8088}:8088"
     depends_on:
-      postgres: { condition: service_healthy }
+      postgres:
+        condition: service_healthy
     environment:
-      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-YOUR_SUPER_SECRET_KEY_PROD_12345}
-      ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin123}
-      POSTGRES_PORT: "5432" # Override .env's POSTGRES_PORT=5433 so it connects using Internal Docker port
-    env_file: .env
+      SUPERSET_SECRET_KEY: "${SUPERSET_SECRET_KEY}"
+      ADMIN_PASSWORD: "${SUPERSET_ADMIN_PASSWORD}"
+      POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
     volumes:
       - ./superset_home:/app/superset_home
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py
     command: >
       bash -c "pip install psycopg2-binary pyathena --target /app/.venv/lib/python3.10/site-packages &&
       superset db upgrade &&
-      superset fab create-admin --username admin --firstname Admin --lastname Superset --email admin@example.com --password \"$${ADMIN_PASSWORD}\" &&
+      superset fab create-admin
+      --username ${SUPERSET_ADMIN_USER}
+      --firstname ${SUPERSET_ADMIN_FIRSTNAME}
+      --lastname ${SUPERSET_ADMIN_LASTNAME}
+      --email ${SUPERSET_ADMIN_EMAIL}
+      --password ${SUPERSET_ADMIN_PASSWORD} || true &&
       superset init &&
-      gunicorn -w 2 --timeout 120 -b 0.0.0.0:8088 --limit-request-line 0 --limit-request-field_size 0 \"superset.app:create_app()\""
+      exec gunicorn -w 2 --timeout 120 -b 0.0.0.0:8088 --limit-request-line 0 --limit-request-field_size 0 \"superset.app:create_app()\""
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
 
 volumes:
   postgres_data:

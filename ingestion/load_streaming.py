@@ -35,7 +35,7 @@ from sqlalchemy import create_engine, text
 logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-S3_BUCKET  = os.environ.get("S3_BUCKET",  "olist-de-tanphat-2026")
+S3_BUCKET  = os.environ.get("S3_BUCKET", "")
 S3_PREFIX  = "raw/streaming/"
 SCHEMA     = "raw"
 TABLE      = "streaming_orders"
@@ -50,6 +50,13 @@ CHECKPOINT_FILE = Path(os.environ.get(
 
 RETRY_ATTEMPTS  = 2
 RETRY_SLEEP_SEC = 3
+
+
+def _require_s3_bucket() -> str:
+    """Fail fast when streaming ingestion is missing its S3 bucket configuration."""
+    if not S3_BUCKET:
+        raise RuntimeError("S3_BUCKET environment variable is required for streaming ingestion.")
+    return S3_BUCKET
 
 
 # ── DB URI — nhất quán với load_csv.py ───────────────────────────────────────
@@ -98,7 +105,7 @@ def list_s3_files(prefix: str) -> list[str]:
     """
     s3     = boto3.client("s3")
     keys: list[str] = []
-    kwargs: dict    = {"Bucket": S3_BUCKET, "Prefix": prefix}
+    kwargs: dict    = {"Bucket": _require_s3_bucket(), "Prefix": prefix}
 
     while True:
         response = s3.list_objects_v2(**kwargs)
@@ -112,7 +119,7 @@ def list_s3_files(prefix: str) -> list[str]:
         else:
             break
 
-    logger.info("[load_streaming] Found %d files under s3://%s/%s", len(keys), S3_BUCKET, prefix)
+    logger.info("[load_streaming] Found %d files under s3://%s/%s", len(keys), _require_s3_bucket(), prefix)
     return keys
 
 
@@ -123,7 +130,7 @@ def read_s3_jsonl(key: str) -> list[dict]:
     Bỏ qua line không hợp lệ thay vì crash toàn bộ file.
     """
     s3  = boto3.client("s3")
-    obj = s3.get_object(Bucket=S3_BUCKET, Key=key)
+    obj = s3.get_object(Bucket=_require_s3_bucket(), Key=key)
     raw = obj["Body"].read()
 
     if key.endswith(".gz"):

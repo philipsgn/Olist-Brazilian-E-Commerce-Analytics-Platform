@@ -30,9 +30,16 @@ DATASET_CONFIG = {
 # --- Hybrid Ingestion Strategy (Local + Cloud) ---
 SCRIPT_DIR = Path(__file__).parent
 DATA_DIR = Path(os.getenv("DATA_DIR", SCRIPT_DIR.parent / "data"))
-S3_BUCKET = os.getenv("S3_BUCKET", "olist-de-tanphat-2026")
+S3_BUCKET = os.getenv("S3_BUCKET", "")
 S3_PREFIX = "raw/csv/"
 USE_S3 = os.getenv("USE_S3", "false").lower() == "true"
+
+
+def _require_s3_bucket() -> str:
+    """Keep cloud ingestion explicit so production buckets are never hard-coded."""
+    if not S3_BUCKET:
+        raise RuntimeError("S3_BUCKET environment variable is required when USE_S3=true.")
+    return S3_BUCKET
 
 # ---------------------------------------------------------------------------
 # DB Connection — assembled from individual env vars.
@@ -98,7 +105,7 @@ def read_dataframe(file_path: Path) -> pd.DataFrame:
         # Chú ý: Cần AWS Credentials (IAM Role/Access Key) đã được cấu hình trong môi trường
         s3_client = boto3.client("s3")
         obj = s3_client.get_object(
-            Bucket=S3_BUCKET,
+            Bucket=_require_s3_bucket(),
             Key=f"{S3_PREFIX}{file_path.name}"
         )
         # Sử dụng io.BytesIO để dbt/pandas xử lý stream dữ liệu từ RAM, không lưu tạm file ra đĩa
@@ -123,7 +130,7 @@ def load_table(file_path: Path, table_name: str) -> int:
     
     if USE_S3:
         s3_client = boto3.client("s3")
-        obj = s3_client.get_object(Bucket=S3_BUCKET, Key=f"{S3_PREFIX}{file_path.name}")
+        obj = s3_client.get_object(Bucket=_require_s3_bucket(), Key=f"{S3_PREFIX}{file_path.name}")
         chunks = pd.read_csv(io.BytesIO(obj["Body"].read()), low_memory=False, chunksize=chunk_size)
     else:
         chunks = pd.read_csv(file_path, low_memory=False, chunksize=chunk_size)

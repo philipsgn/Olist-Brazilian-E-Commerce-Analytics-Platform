@@ -19,6 +19,7 @@ import os
 import logging
 
 logger = logging.getLogger(__name__)
+ENVIRONMENT = os.getenv("ENVIRONMENT", "dev").lower()
 
 # ---------------------------------------------------------------------------
 # Metadata DB — where Superset stores dashboards, charts, users, etc.
@@ -42,10 +43,15 @@ logger.info(
 # ---------------------------------------------------------------------------
 SECRET_KEY = os.getenv("SUPERSET_SECRET_KEY", "CHANGE_ME_IN_PRODUCTION")
 
+if ENVIRONMENT == "production" and SECRET_KEY == "CHANGE_ME_IN_PRODUCTION":
+    raise RuntimeError(
+        "SUPERSET_SECRET_KEY must be set to a non-default value in production."
+    )
+
 if SECRET_KEY == "CHANGE_ME_IN_PRODUCTION":
     logger.warning(
-        "[superset_config] ⚠️  SUPERSET_SECRET_KEY is using the insecure default. "
-        "Set the env var before deploying to production!"
+        "[superset_config] SUPERSET_SECRET_KEY is using the insecure default. "
+        "Set the env var before deploying to production."
     )
 
 WTF_CSRF_ENABLED = True
@@ -56,4 +62,4 @@ WTF_CSRF_TIME_LIMIT = None
 # ---------------------------------------------------------------------------
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_SECURE   = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
-SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_HTTPONLY = True
