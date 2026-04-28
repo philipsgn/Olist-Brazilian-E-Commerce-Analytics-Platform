@@ -202,6 +202,15 @@ jobs:
             . ./.env
             set +a
 
+            AIRFLOW_UID_RESOLVED="${AIRFLOW_UID:-50000}"
+            AIRFLOW_GID_RESOLVED="${AIRFLOW_GID:-0}"
+
+            echo "Preparing bind-mounted directories for Airflow with uid=${AIRFLOW_UID_RESOLVED} gid=${AIRFLOW_GID_RESOLVED} ..."
+            mkdir -p airflow/dags airflow/logs airflow/plugins airflow/utils data ingestion dbt_project tmp superset_home
+            sudo chown -R "${AIRFLOW_UID_RESOLVED}:${AIRFLOW_GID_RESOLVED}" airflow/logs airflow/dags airflow/plugins airflow/utils data ingestion dbt_project tmp
+            sudo chmod -R ug+rwX airflow/logs airflow/dags airflow/plugins airflow/utils data ingestion dbt_project tmp
+            sudo chown -R ${{ secrets.EC2_USER }}:${{ secrets.EC2_USER }} superset_home
+
             echo "Stopping previous stack..."
             sudo docker compose down --remove-orphans || true
 
