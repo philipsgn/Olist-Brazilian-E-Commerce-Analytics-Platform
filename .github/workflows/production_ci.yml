@@ -163,6 +163,7 @@ jobs:
 
             echo "Preparing release directory: ${PROJECT_DIR}"
             mkdir -p "${PROJECT_DIR}"
+            sudo chown -R ${{ secrets.EC2_USER }}:${{ secrets.EC2_USER }} "${PROJECT_DIR}"
             rm -rf "${RELEASE_DIR}"
             mkdir -p "${RELEASE_DIR}"
 
@@ -176,10 +177,15 @@ jobs:
             fi
 
             echo "Syncing release into project directory..."
-            rsync -a --delete \
+            rsync -rltDvz --delete --no-perms --no-owner --no-group \
               --exclude='.env' \
               --exclude='airflow/logs/' \
+              --exclude='airflow/dags/__pycache__/' \
+              --exclude='airflow/utils/__pycache__/' \
+              --exclude='ingestion/__pycache__/' \
               --exclude='dbt_project/ecommerce/dbt_packages/' \
+              --exclude='dbt_project/ecommerce/logs/' \
+              --exclude='data/' \
               --exclude='superset_home/' \
               --exclude='tmp/' \
               "${RELEASE_DIR}/" "${PROJECT_DIR}/"
