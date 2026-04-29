@@ -155,17 +155,17 @@ with DAG(
         "POSTGRES_DB": os.getenv("POSTGRES_DB", "ecommerce_db"),
     }
 
-    dbt_deps = BashOperator(task_id="dbt_deps", bash_command=f"dbt deps --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
-    dbt_run_staging = BashOperator(task_id="dbt_run_staging", bash_command=f"dbt run --select staging.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
-    dbt_test_staging = BashOperator(task_id="dbt_test_staging", bash_command=f"dbt test --select staging.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
-    dbt_run_marts = BashOperator(task_id="dbt_run_marts", bash_command=f"dbt run --select marts.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
-    dbt_test_marts = BashOperator(task_id="dbt_test_marts", bash_command=f"dbt test --select marts.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
+    dbt_base_cmd = f"dbt deps --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR} && dbt"
+    
+    dbt_run_staging = BashOperator(task_id="dbt_run_staging", bash_command=f"{dbt_base_cmd} run --select staging.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
+    dbt_test_staging = BashOperator(task_id="dbt_test_staging", bash_command=f"{dbt_base_cmd} test --select staging.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
+    dbt_run_marts = BashOperator(task_id="dbt_run_marts", bash_command=f"{dbt_base_cmd} run --select marts.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
+    dbt_test_marts = BashOperator(task_id="dbt_test_marts", bash_command=f"{dbt_base_cmd} test --select marts.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
 
     (
         [check_raw_schema, generate_fake_data]
         >> load_csv
         >> load_streaming
-        >> dbt_deps
         >> dbt_run_staging
         >> dbt_test_staging
         >> dbt_run_marts
