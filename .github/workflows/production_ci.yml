@@ -123,9 +123,10 @@ jobs:
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
-          echo "Checking TCP reachability to ${EC2_HOST}:22 ..."
-          if ! nc -z -w 20 "${EC2_HOST}" 22; then
-            echo "ERROR: GitHub runner cannot reach ${EC2_HOST}:22."
+          CLEAN_HOST=$(echo -n "${EC2_HOST}" | tr -d '[:space:]')
+          echo "Checking TCP reachability to ${CLEAN_HOST}:22 ..."
+          if ! nc -z -w 20 "${CLEAN_HOST}" 22; then
+            echo "ERROR: GitHub runner cannot reach ${CLEAN_HOST}:22."
             echo "Verify EC2 is running, has a public IP or reachable route, and Security Group/NACL allow SSH from GitHub-hosted runners."
             exit 1
           fi
