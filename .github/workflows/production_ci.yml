@@ -124,7 +124,7 @@ jobs:
           EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
           echo "Checking TCP reachability to ${EC2_HOST}:22 ..."
-          if ! timeout 20 bash -c "</dev/tcp/${EC2_HOST}/22"; then
+          if ! nc -z -w 20 "${EC2_HOST}" 22; then
             echo "ERROR: GitHub runner cannot reach ${EC2_HOST}:22."
             echo "Verify EC2 is running, has a public IP or reachable route, and Security Group/NACL allow SSH from GitHub-hosted runners."
             exit 1
