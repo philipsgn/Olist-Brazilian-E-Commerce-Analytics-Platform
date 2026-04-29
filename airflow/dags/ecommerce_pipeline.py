@@ -153,6 +153,12 @@ with DAG(
         "POSTGRES_HOST": os.getenv("POSTGRES_HOST", "postgres"),
         "POSTGRES_PORT": os.getenv("POSTGRES_PORT", "5432"),
         "POSTGRES_DB": os.getenv("POSTGRES_DB", "ecommerce_db"),
+        "DBT_DEV_HOST": os.getenv("POSTGRES_HOST", "postgres"),
+        "DBT_DEV_PORT": os.getenv("POSTGRES_PORT", "5432"),
+        "DBT_DEV_USER": os.getenv("POSTGRES_USER", "de_user"),
+        "DBT_DEV_PASSWORD": os.getenv("POSTGRES_PASSWORD", "de_password"),
+        "DBT_DEV_DBNAME": os.getenv("POSTGRES_DB", "ecommerce_db"),
+        "DBT_DEV_SCHEMA": os.getenv("DBT_DEV_SCHEMA", "analytics_dev"),
     }
 
     dbt_base_cmd = f"dbt deps --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR} && dbt"
