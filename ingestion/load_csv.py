@@ -122,8 +122,16 @@ def load_table(file_path: Path, table_name: str) -> int:
     - Bỏ method='multi' để tránh overhead bộ nhớ khi dựng SQL
     """
     engine = get_engine()
+    
+    # Truncate table first to avoid dropping it and its dependent dbt views
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f"TRUNCATE TABLE {SCHEMA}.{table_name}"))
+            print(f"   → [CLEANUP] Truncated table {SCHEMA}.{table_name} before loading.")
+    except Exception as e:
+        print(f"   → [CLEANUP] Could not truncate (might not exist yet): {e}")
+
     chunk_size = 20000 
-    first_chunk = True
     total_rows = 0
     
     print(f"   → [STREAMING] Loading {table_name}...")
@@ -136,21 +144,17 @@ def load_table(file_path: Path, table_name: str) -> int:
         chunks = pd.read_csv(file_path, low_memory=False, chunksize=chunk_size)
 
     for chunk in chunks:
-        mode = 'replace' if first_chunk else 'append'
-        
-        # Dùng method=None (mặc định) sẽ chậm hơn tí nhưng an toàn tuyệt đối cho RAM
+        # Always append since we truncated the table beforehand
         chunk.to_sql(
             name=table_name,
             con=engine,
             schema=SCHEMA,
-            if_exists=mode,
+            if_exists='append',
             index=False,
             chunksize=5000 
         )
         
         total_rows += len(chunk)
-        if first_chunk:
-            first_chunk = False
         print(f"     + Progress: {total_rows} rows loaded...")
         
     return total_rows
