@@ -56,6 +56,7 @@ class AthenaDataQualityOperator(BaseOperator):
                 query_execution_id = hook.run_query(
                     query=query,
                     query_context={"Database": self.database},
+                    result_configuration={"OutputLocation": "s3://olist-de-tanphat-2026/athena-results/"},
                     workgroup=self.workgroup
                 )
                 
