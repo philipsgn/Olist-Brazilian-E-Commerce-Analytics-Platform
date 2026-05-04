@@ -61,6 +61,10 @@ class AthenaDataQualityOperator(BaseOperator):
                 )
                 
                 # Đợi và lấy kết quả
+                status = hook.poll_query_status(query_execution_id)
+                if status != 'SUCCEEDED':
+                    raise Exception(f"Query failed with status: {status}")
+                
                 results = hook.get_query_results(query_execution_id=query_execution_id)
                 
                 # Trích xuất giá trị bad_count
