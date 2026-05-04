@@ -25,27 +25,50 @@ resource "aws_s3_bucket" "data_lake_bucket" {
   bucket = var.bucket_name
 }
 
-# Cấu hình Lifecycle Policy cho thư mục Gold
-resource "aws_s3_bucket_lifecycle_configuration" "gold_data_lifecycle" {
+# Cấu hình Lifecycle Policy — bao phủ đúng thư mục chứa data thật
+resource "aws_s3_bucket_lifecycle_configuration" "data_lifecycle" {
   bucket = aws_s3_bucket.data_lake_bucket.id
 
+  # Rule 1: Dữ liệu đã xử lý (Parquet) ở tầng Processed — Airflow export mỗi ngày
   rule {
-    id     = "archive-gold-layer-data"
+    id     = "archive-processed-layer"
     status = "Enabled"
 
     filter {
-      prefix = "gold/view_order_analytics/"
+      prefix = "processed/"
     }
 
-    # Sau 30 ngày: Chuyển sang S3 Standard-Infrequent Access
+    # Sau 30 ngày: Chuyển sang S3 Standard-Infrequent Access (ít truy cập, tiết kiệm ~60%)
     transition {
       days          = 30
       storage_class = "STANDARD_IA"
     }
 
-    # Sau 90 ngày: Chuyển sang Glacier Flexible Retrieval
+    # Sau 90 ngày: Chuyển sang Glacier Flexible Retrieval (lưu trữ lâu dài, tiết kiệm ~80%)
     transition {
       days          = 90
+      storage_class = "GLACIER"
+    }
+  }
+
+  # Rule 2: Dữ liệu thô CSV và Streaming ở tầng Raw — ít khi cần truy cập lại
+  rule {
+    id     = "archive-raw-layer"
+    status = "Enabled"
+
+    filter {
+      prefix = "raw/"
+    }
+
+    # Raw data ít quan trọng hơn, chuyển sang IA sớm hơn (60 ngày)
+    transition {
+      days          = 60
+      storage_class = "STANDARD_IA"
+    }
+
+    # Sau 180 ngày (6 tháng): Đưa vào Glacier để lưu trữ tuân thủ
+    transition {
+      days          = 180
       storage_class = "GLACIER"
     }
   }
