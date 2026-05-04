@@ -1,6 +1,5 @@
 import logging
 from airflow.models import BaseOperator
-from airflow.providers.amazon.aws.hooks.athena import AthenaHook
 from airflow.exceptions import AirflowException
 from airflow.utils.decorators import apply_defaults
 
@@ -26,6 +25,7 @@ class AthenaDataQualityOperator(BaseOperator):
         self.workgroup = workgroup
 
     def execute(self, context):
+        from airflow.providers.amazon.aws.hooks.athena import AthenaHook
         hook = AthenaHook(aws_conn_id=self.aws_conn_id)
         
         # 3 Bài kiểm tra chuẩn như Siêu Prompt yêu cầu
