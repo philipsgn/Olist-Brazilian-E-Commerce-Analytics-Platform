@@ -29,6 +29,9 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 
+# Import custom Athena DQ Operator
+from plugins.operators.athena_data_quality import AthenaDataQualityOperator
+
 # Import custom alerting
 try:
     from utils.discord_alerts import send_discord_alert
@@ -51,6 +54,7 @@ DBT_PROFILES_DIR = os.path.join(PROJECT_ROOT, "dbt_project")
 INGESTION_SCRIPT = os.path.join(INGESTION_DIR, "load_csv.py")
 STREAMING_SCRIPT = os.path.join(INGESTION_DIR, "load_streaming.py")
 SIM_SCRIPT = os.path.join(INGESTION_DIR, "simulate_data.py")
+EXPORT_SCRIPT = os.path.join(PROJECT_ROOT, "scripts", "export_to_s3.py")
 
 def get_db_uri() -> str:
     pg_user     = os.getenv("POSTGRES_USER",     "de_user")
@@ -105,6 +109,15 @@ def run_streaming_load(**kwargs) -> str:
     spec.loader.exec_module(module)
     module.run_streaming_ingestion()
     return "Streaming Ingestion Complete"
+
+def run_export_s3(**kwargs) -> str:
+    os.environ["S3_BUCKET"] = os.getenv("S3_BUCKET", "olist-de-tanphat-2026")
+    spec = importlib.util.spec_from_file_location("export_to_s3", EXPORT_SCRIPT)
+    if spec is None: raise FileNotFoundError(f"Missing: {EXPORT_SCRIPT}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.main()
+    return "Export to S3 Complete"
 
 def verify_raw_schema(**kwargs) -> str:
     import sqlalchemy
@@ -168,6 +181,17 @@ with DAG(
     dbt_run_marts = BashOperator(task_id="dbt_run_marts", bash_command=f"{dbt_base_cmd} run --select marts.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
     dbt_test_marts = BashOperator(task_id="dbt_test_marts", bash_command=f"{dbt_base_cmd} test --select marts.* --target {ENVIRONMENT} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}", env=_dbt_env, append_env=True)
 
+    export_to_s3_task = PythonOperator(task_id="export_processed_to_s3", python_callable=run_export_s3)
+
+    athena_dq_check = AthenaDataQualityOperator(
+        task_id="athena_data_quality_check",
+        table_name="view_order_analytics_gold",
+        database="default",  # Sửa lại thành database default như trong ảnh
+        aws_conn_id="aws_default",
+        workgroup="primary",
+        retries=0
+    )
+
     (
         [check_raw_schema, generate_fake_data]
         >> load_csv
@@ -176,4 +200,6 @@ with DAG(
         >> dbt_test_staging
         >> dbt_run_marts
         >> dbt_test_marts
+        >> export_to_s3_task
+        >> athena_dq_check
     )

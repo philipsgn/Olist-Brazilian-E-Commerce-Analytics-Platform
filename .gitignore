@@ -46,3 +46,5 @@ postgres_data/
 
 # CI/CD
 # .sqlfluff  <- config file must be tracked, do NOT ignore
+
+.terraform/
