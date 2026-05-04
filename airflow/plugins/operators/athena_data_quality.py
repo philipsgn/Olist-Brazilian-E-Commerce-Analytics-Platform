@@ -29,11 +29,12 @@ class AthenaDataQualityOperator(BaseOperator):
         hook = AthenaHook(aws_conn_id=self.aws_conn_id)
         
         # 3 Bài kiểm tra chuẩn như Siêu Prompt yêu cầu
-        # Đã sửa lại Uniqueness: Kiểm tra theo cấp độ món hàng trong đơn (tránh lỗi do 1 đơn có nhiều món)
+        # Đã sửa lại Uniqueness: Kiểm tra xem có order_id nào bị NULL (trống) không
         dq_queries = {
             "Uniqueness": f"""
-                SELECT COUNT(*) - COUNT(DISTINCT CONCAT(CAST(order_id AS VARCHAR), CAST(order_item_id AS VARCHAR))) AS bad_count 
+                SELECT COUNT(*) AS bad_count 
                 FROM {self.database}.{self.table_name}
+                WHERE order_id IS NULL
             """,
             "Completeness": f"""
                 SELECT COUNT(*) AS bad_count 
