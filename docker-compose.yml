@@ -30,6 +30,7 @@ x-airflow-common: &airflow-common
     - ./data:/opt/airflow/data
     - ./ingestion:/opt/airflow/ingestion
     - ./dbt_project:/opt/airflow/dbt_project
+    - ./scripts:/opt/airflow/scripts
     - ./tmp:/opt/airflow/tmp
   depends_on:
     postgres:
