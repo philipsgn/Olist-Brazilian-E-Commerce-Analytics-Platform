@@ -29,12 +29,20 @@ class AthenaDataQualityOperator(BaseOperator):
         hook = AthenaHook(aws_conn_id=self.aws_conn_id)
         
         # 3 Bài kiểm tra chuẩn như Siêu Prompt yêu cầu
-        # Đã sửa lại Uniqueness: Kiểm tra xem có order_id nào bị NULL (trống) không
+        # Đã sửa lại Uniqueness: Kiểm tra dòng trùng lặp hoàn toàn
+        # Grain của view: (order_id + source + created_at + price) phải unique
+        # Batch có nhiều order_id giống nhau (multi-item), nhưng không được trùng hoàn toàn cả 4 cột
         dq_queries = {
             "Uniqueness": f"""
-                SELECT COUNT(*) AS bad_count 
+                SELECT COUNT(*) - COUNT(DISTINCT
+                    CONCAT(
+                        COALESCE(CAST(order_id   AS VARCHAR), ''),
+                        COALESCE(CAST(source     AS VARCHAR), ''),
+                        COALESCE(CAST(created_at AS VARCHAR), ''),
+                        COALESCE(CAST(price      AS VARCHAR), '')
+                    )
+                ) AS bad_count 
                 FROM {self.database}.{self.table_name}
-                WHERE order_id IS NULL
             """,
             "Completeness": f"""
                 SELECT COUNT(*) AS bad_count 
