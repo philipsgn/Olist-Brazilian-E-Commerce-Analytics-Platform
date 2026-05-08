@@ -17,6 +17,61 @@
 - [Tech Stack](#tech-stack)
 - [Dataset](#dataset)
 - [Project Structure](#project-structure)
+# 🛒 E-Commerce Data Engineering Platform
+
+> End-to-end data pipeline built on the **Olist Brazilian E-Commerce** dataset — ingesting, transforming, orchestrating, and visualizing 500k+ records using a modern open-source stack.
+
+![Stack](https://img.shields.io/badge/Python-3.12-blue?logo=python)
+![Stack](https://img.shields.io/badge/dbt-1.10-orange?logo=dbt)
+![Stack](https://img.shields.io/badge/Airflow-2.9.3-red?logo=apacheairflow)
+![Stack](https://img.shields.io/badge/PostgreSQL-15-blue?logo=postgresql)
+![Stack](https://img.shields.io/badge/Superset-4.0.1-brightgreen?logo=apache)
+![Stack](https://img.shields.io/badge/Docker-Compose-blue?logo=docker)
+
+---
+
+# 🚀 Olist E-commerce: High-Performance Data Lakehouse on AWS
+> Một nền tảng Data Platform toàn diện kết hợp Batch & Streaming, vận hành theo kiến trúc Medallion và tự động hóa 100% bằng CI/CD.
+
+```mermaid
+graph TD
+    subgraph "Ingestion Layer"
+        A[Python Simulator] -->|Streaming| B[Kinesis Data Firehose]
+        C[Local CSV] -->|Batch| D[S3 Bronze Bucket]
+    end
+
+    subgraph "Storage & Processing"
+        B -->|JSON Lines| D
+        D --> E[Airflow & dbt]
+        E -->|Parquet + Snappy| F[S3 Gold Bucket]
+        G[RDS PostgreSQL] <--> E
+    end
+
+    subgraph "Analytics & Visualization"
+        F --> H[Amazon Athena]
+        G --> H
+        H --> I[Apache Superset]
+    end
+
+    subgraph "Observability & IaC"
+        J[Terraform] -.->|Manages| D
+        E -->|Alerts| K[Discord Webhook]
+    end
+```
+
+## 🌟 Dự án này giải quyết bài toán gì?
+Dự án không chỉ dừng lại ở việc di chuyển dữ liệu, mà tập trung vào các tiêu chuẩn **Production-grade**:
+- **Consistency:** Hợp nhất dữ liệu Streaming (đơn hàng mới) và Batch (lịch sử) trong cùng một View thống nhất.
+- **Reliability:** Hệ thống Data Quality tự động phát hiện trùng lặp và lỗi logic trước khi dữ liệu đến tay người dùng.
+- **Scalability:** Kiến trúc Serverless (Athena, Lambda) cho phép hệ thống tự mở rộng theo lượng đơn hàng.
+- **Cost Efficiency:** Tối ưu hóa 80% chi phí lưu trữ thông qua S3 Lifecycle và nén Parquet.
+
+## 📋 Table of Contents
+
+- [Architecture Overview](#architecture-overview)
+- [Tech Stack](#tech-stack)
+- [Dataset](#dataset)
+- [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Phase 1 — Infrastructure Setup](#phase-1--infrastructure-setup)
 - [Phase 2 — Data Ingestion](#phase-2--data-ingestion)
@@ -27,10 +82,6 @@
 - [Data Model](#data-model)
 - [Business Questions Answered](#business-questions-answered)
 - [Lessons Learned](#lessons-learned)
-
----
-
-## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
