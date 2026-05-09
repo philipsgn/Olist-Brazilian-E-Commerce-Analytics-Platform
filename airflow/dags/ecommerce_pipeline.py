@@ -55,6 +55,7 @@ INGESTION_SCRIPT = os.path.join(INGESTION_DIR, "load_csv.py")
 STREAMING_SCRIPT = os.path.join(INGESTION_DIR, "load_streaming.py")
 SIM_SCRIPT = os.path.join(INGESTION_DIR, "simulate_data.py")
 EXPORT_SCRIPT = os.path.join(PROJECT_ROOT, "scripts", "export_to_s3.py")
+FORECAST_SCRIPT = os.path.join(PROJECT_ROOT, "analytics", "sales_forecast.py")
 
 def get_db_uri() -> str:
     pg_user     = os.getenv("POSTGRES_USER",     "de_user")
@@ -118,6 +119,14 @@ def run_export_s3(**kwargs) -> str:
     spec.loader.exec_module(module)
     module.main()
     return "Export to S3 Complete"
+
+def run_sales_forecast(**kwargs) -> str:
+    spec = importlib.util.spec_from_file_location("sales_forecast", FORECAST_SCRIPT)
+    if spec is None: raise FileNotFoundError(f"Missing: {FORECAST_SCRIPT}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.main()
+    return "AI Sales Forecasting Complete"
 
 def verify_raw_schema(**kwargs) -> str:
     import sqlalchemy
@@ -192,6 +201,11 @@ with DAG(
         retries=0
     )
 
+    ai_sales_forecasting = PythonOperator(
+        task_id="ai_sales_forecasting",
+        python_callable=run_sales_forecast
+    )
+
     (
         [check_raw_schema, generate_fake_data]
         >> load_csv
@@ -202,4 +216,5 @@ with DAG(
         >> dbt_test_marts
         >> export_to_s3_task
         >> athena_dq_check
+        >> ai_sales_forecasting
     )
