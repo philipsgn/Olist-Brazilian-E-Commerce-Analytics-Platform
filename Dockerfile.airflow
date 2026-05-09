@@ -11,7 +11,8 @@ RUN pip uninstall -y dbt-core dbt-postgres || true
 
 # Install additional requirements (Prophet, etc.)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip uninstall -y sqlalchemy pandas && \
+    pip install --no-cache-dir "sqlalchemy<2.0" "pandas<2.2.0" -r requirements.txt
 
 # Handle dependency conflicts by creating an isolated virtual environment for dbt.
 # Airflow has hundreds of strict dependencies that often clash with dbt.
