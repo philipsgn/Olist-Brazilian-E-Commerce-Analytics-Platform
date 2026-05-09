@@ -95,3 +95,18 @@ GROUP BY
     v.customer_state
 ORDER BY
     total_revenue DESC;
+
+-- ------------------------------------------
+-- 8. AI SALES FORECAST TABLE (GOLD LAYER)
+--    Table for storing predictive revenue analytics.
+-- ------------------------------------------
+CREATE EXTERNAL TABLE IF NOT EXISTS `default`.`gold_sales_forecast` (
+  `ds` timestamp,
+  `yhat` double,
+  `yhat_lower` double,
+  `yhat_upper` double,
+  `prediction_date` string
+)
+STORED AS PARQUET
+LOCATION 's3://olist-de-tanphat-2026/gold/sales_forecast/'
+TBLPROPERTIES ('classification'='parquet');
