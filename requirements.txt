@@ -1,10 +1,10 @@
-# Core Dependencies (Pinned for stability with Airflow 2.9.3)
+# Core Dependencies
 sqlalchemy==1.4.52
 pandas==2.1.4
 psycopg2-binary==2.9.9
 
-# AI & Analytics
-prophet==1.1.5
+# AI & Analytics (Lightweight Edition)
+scikit-learn==1.4.2
 pyarrow==16.0.0
 
 # Utils
