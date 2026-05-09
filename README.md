@@ -18,11 +18,13 @@ graph TD
         D --> E[Airflow / EC2]
         E -->|dbt Transformation| G[RDS PostgreSQL]
         E -->|Parquet + Snappy| F[S3 Gold Bucket]
+        E -->|Machine Learning| M[AI Forecast Layer]
     end
 
     subgraph "Analytics & Governance"
         F --> H[Amazon Athena]
         G --> H
+        M --> H
         H --> I[Apache Superset]
         E -->|Data Quality Check| H
     end
@@ -61,6 +63,7 @@ graph TD
 | Category | Technology |
 |---|---|
 | **Cloud Provider** | Amazon Web Services (AWS) |
+| **Machine Learning**| Meta Prophet (Forecasting) |
 | **Infrastrucure** | Terraform (IaC), VPC, Security Groups, IAM |
 | **Ingestion** | Kinesis Firehose, Lambda, Python |
 | **Storage** | S3 (Bronze, Silver, Gold), RDS PostgreSQL |
@@ -69,6 +72,22 @@ graph TD
 | **Query & Analytics** | Amazon Athena, Glue Data Catalog |
 | **Visualization** | Apache Superset |
 | **Observability** | Discord Webhook, CloudWatch |
+
+---
+
+## 📂 Project Structure (Interviewer's Map)
+```bash
+.
+├── airflow/
+│   ├── dags/             # Production ETL Pipelines (DAGs)
+│   └── plugins/          # Custom Athena Data Quality Operators
+├── analytics/            # AI & Machine Learning Layer (Meta Prophet)
+├── dbt_project/          # Data Modeling (Staging & Marts)
+├── docs/                 # Senior Architecture Deep-dives
+├── ingestion/            # Raw Data Loaders (CSV & Streaming Simulators)
+├── scripts/              # Cloud Utilities (Export to S3, Glue DDLs)
+└── terraform/            # Infrastructure as Code (AWS Cloud Resources)
+```
 
 ---
 
