@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 # --- Senior Level Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(asctime)s: %(message)s')
 logger = logging.getLogger("SalesForecaster")
+logger.info("Forecasting Engine Senior v2 Initialized")
 
 # Environment & Constants
 S3_BUCKET = os.getenv("S3_BUCKET", "olist-de-tanphat-2026")
@@ -129,6 +130,11 @@ class SalesForecaster:
             logger.error(f"Fatal error in forecasting pipeline: {str(e)}")
             raise
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for Airflow PythonOperator"""
+    logger.info("🚀 Bắt đầu AI Sales Forecasting (Senior v2 - Optimized)...")
     forecaster = SalesForecaster()
     forecaster.execute()
+
+if __name__ == "__main__":
+    main()
