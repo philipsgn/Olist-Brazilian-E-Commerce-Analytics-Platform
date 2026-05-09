@@ -3,9 +3,11 @@ sqlalchemy==1.4.52
 pandas==2.1.4
 psycopg2-binary==2.9.9
 
-# AI & Analytics (Lightweight Edition)
+# AI & Analytics
 scikit-learn==1.4.2
 pyarrow==16.0.0
+s3fs==2024.3.1
+fsspec==2024.3.1
 
 # Utils
 requests==2.32.2
