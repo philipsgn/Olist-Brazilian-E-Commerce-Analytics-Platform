@@ -110,3 +110,28 @@ CREATE EXTERNAL TABLE IF NOT EXISTS `default`.`gold_sales_forecast` (
 STORED AS PARQUET
 LOCATION 's3://olist-de-tanphat-2026/gold/sales_forecast/'
 TBLPROPERTIES ('classification'='parquet');
+
+-- ------------------------------------------
+-- 9. ACTUAL VS FORECAST UNIFIED VIEW
+--    Combines historical gold data with AI predictions 
+--    for seamless visualization in Superset.
+-- ------------------------------------------
+CREATE OR REPLACE VIEW `default`.`view_actual_vs_forecast` AS
+SELECT 
+    date_trunc('day', created_at) AS event_date,
+    SUM(total_order_amount)       AS actual_value,
+    CAST(NULL AS DOUBLE)          AS forecast_value,
+    'ACTUAL'                      AS data_type
+FROM 
+    "default"."view_order_analytics_gold"
+GROUP BY 1
+
+UNION ALL
+
+SELECT 
+    ds                            AS event_date,
+    CAST(NULL AS DOUBLE)          AS actual_value,
+    yhat                          AS forecast_value,
+    'FORECAST'                    AS data_type
+FROM 
+    "default"."gold_sales_forecast";
