@@ -70,12 +70,12 @@ ORDER BY
 -- 3. AI SALES FORECAST TABLE (GOLD LAYER)
 --    External table pointing to AI-generated Parquet on S3.
 -- ------------------------------------------
-CREATE EXTERNAL TABLE IF NOT EXISTS `default`.`gold_sales_forecast` (
-  `ds` timestamp,
-  `yhat` double,
-  `yhat_lower` double,
-  `yhat_upper` double,
-  `prediction_date` string
+CREATE EXTERNAL TABLE IF NOT EXISTS "default"."gold_sales_forecast" (
+  "ds" timestamp,
+  "yhat" double,
+  "yhat_lower" double,
+  "yhat_upper" double,
+  "prediction_date" string
 )
 STORED AS PARQUET
 LOCATION 's3://olist-de-tanphat-2026/gold/sales_forecast/'
@@ -85,7 +85,7 @@ TBLPROPERTIES ('classification'='parquet');
 -- 4. ACTUAL VS FORECAST UNIFIED VIEW
 --    Combines historical Lambda data with AI predictions.
 -- ------------------------------------------
-CREATE OR REPLACE VIEW `default`.`view_actual_vs_forecast` AS
+CREATE OR REPLACE VIEW "default"."view_actual_vs_forecast" AS
 SELECT 
     date_trunc('day', created_at) AS event_date,
     SUM(total_amount)             AS actual_value,
