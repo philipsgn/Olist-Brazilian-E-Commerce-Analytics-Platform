@@ -1,17 +1,8 @@
 -- ==========================================
--- analytics/views.sql
--- PHASE 5: DATA MODELING & GOLD LAYER (LAMBDA ARCHITECTURE)
--- ==========================================
--- Project  : Olist Brazilian E-Commerce Analytics Platform
--- Author   : TanPhat
--- Target   : AWS Athena (AwsDataCatalog)
+-- analytics/views.sql (FINAL CORRECTED VERSION)
 -- ==========================================
 
--- ------------------------------------------
--- 1. GOLD LAYER VIEW (LAMBDA ARCHITECTURE)
---    Combines Real-time Streaming (S3) and Batch (RDS) 
---    into a single denormalized analytics view.
--- ------------------------------------------
+-- 1. GOLD LAYER VIEW (LAMBDA ARCHITECTURE + TIME SHIFT)
 CREATE OR REPLACE VIEW "AwsDataCatalog"."default"."view_order_analytics_gold" AS 
 SELECT
     'Streaming' as source,
@@ -39,8 +30,8 @@ SELECT
     p.payment_types as payment_type,
     c.customer_state,
     'delivered' as order_status,
-    -- [SENIOR FIX] Shift 2018 data to 2026 for AI alignment
-    date_add('year', 8, CAST(f.order_purchase_timestamp AS timestamp)) as created_at,
+    -- [CORRECTED] Dùng order_date_id và cộng 8 năm
+    date_add('year', 8, CAST(f.order_date_id AS timestamp)) as created_at,
     (f.price + f.freight_value) as total_amount,
     COALESCE(d.product_category, 'others') as product
 FROM
@@ -49,10 +40,7 @@ FROM
     LEFT JOIN "rds_postgres"."dev_pht"."dim_customers" c ON f.customer_id = c.customer_id
     LEFT JOIN "rds_postgres"."dev_pht"."dim_products"  d ON f.product_id  = d.product_id;
 
--- ------------------------------------------
 -- 2. BUSINESS PERFORMANCE VIEW
---    Business metric: total revenue per customer state.
--- ------------------------------------------
 CREATE OR REPLACE VIEW "AwsDataCatalog"."default"."view_state_revenue_metrics" AS
 SELECT
     customer_state,
@@ -67,10 +55,7 @@ GROUP BY
 ORDER BY
     total_revenue DESC;
 
--- ------------------------------------------
 -- 3. AI SALES FORECAST TABLE (GOLD LAYER)
---    External table pointing to AI-generated Parquet on S3.
--- ------------------------------------------
 CREATE EXTERNAL TABLE IF NOT EXISTS "default"."gold_sales_forecast" (
   "ds" timestamp,
   "yhat" double,
@@ -82,10 +67,7 @@ STORED AS PARQUET
 LOCATION 's3://olist-de-tanphat-2026/gold/sales_forecast/'
 TBLPROPERTIES ('classification'='parquet');
 
--- ------------------------------------------
 -- 4. ACTUAL VS FORECAST UNIFIED VIEW
---    Combines historical Lambda data with AI predictions.
--- ------------------------------------------
 CREATE OR REPLACE VIEW "default"."view_actual_vs_forecast" AS
 SELECT 
     date_trunc('day', created_at) AS event_date,
