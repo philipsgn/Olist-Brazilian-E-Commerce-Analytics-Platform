@@ -35,6 +35,7 @@
 CREATE OR REPLACE VIEW "AwsDataCatalog"."default"."view_order_analytics_gold" AS
 SELECT
     f.order_id,
+    f.order_purchase_timestamp AS created_at,
     c.customer_id,
     c.customer_state,
     p.product_id,
