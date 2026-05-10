@@ -39,7 +39,8 @@ SELECT
     p.payment_types as payment_type,
     c.customer_state,
     'delivered' as order_status,
-    CAST(f.order_purchase_timestamp AS timestamp) as created_at,
+    -- [SENIOR FIX] Shift 2018 data to 2026 for AI alignment
+    date_add('year', 8, CAST(f.order_purchase_timestamp AS timestamp)) as created_at,
     (f.price + f.freight_value) as total_amount,
     COALESCE(d.product_category, 'others') as product
 FROM
