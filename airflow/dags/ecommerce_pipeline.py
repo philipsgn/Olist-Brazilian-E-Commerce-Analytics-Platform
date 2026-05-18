@@ -68,7 +68,7 @@ def get_db_uri() -> str:
 
 DB_URI = get_db_uri()
 
-DBT_TARGET = Variable.get("DBT_TARGET", ENVIRONMENT)
+DBT_TARGET = Variable.get("DBT_TARGET", os.getenv("DBT_TARGET", "prod"))
 
 
 
