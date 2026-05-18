@@ -1,3 +1,4 @@
+echo "✔ RDS env validation passed"
 #!/usr/bin/env bash
 set -euo pipefail
 

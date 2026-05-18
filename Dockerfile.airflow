@@ -45,3 +45,14 @@ ENV PATH="/opt/airflow/dbt_venv/bin:$PATH"
 # successfully find the new isolated dbt binary!
 RUN mkdir -p /home/airflow/.local/bin && \
     ln -s /opt/airflow/dbt_venv/bin/dbt /home/airflow/.local/bin/dbt
+
+# Copy runtime helper scripts into the image and enforce safe ownership/permissions.
+# This ensures scripts are executable in image-based deployments even if host
+# bind-mounts (Windows) would otherwise strip the executable bit.
+USER root
+COPY scripts/ /opt/airflow/scripts/
+RUN chown -R root:root /opt/airflow/scripts && \
+    find /opt/airflow/scripts -type f -name "*.sh" -exec sed -i 's/\r$//' {} \; && \
+    find /opt/airflow/scripts -type f -name "*.sh" -exec chmod 0755 {} \;
+# Revert to non-root user for the rest of the image
+USER airflow
