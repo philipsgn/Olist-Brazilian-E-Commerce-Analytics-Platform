@@ -43,20 +43,26 @@ def _require_s3_bucket() -> str:
 
 # ---------------------------------------------------------------------------
 # DB Connection — assembled from individual env vars.
-# Defaults are suitable for the local docker-compose stack.
-# Override on AWS EC2 by setting POSTGRES_HOST, POSTGRES_PORT, etc. in the
-# environment or via AWS Secrets Manager / Parameter Store injection.
+# Production-grade deployments use the canonical RDS_* credential names.
 # ---------------------------------------------------------------------------
+
+def require_rds_env(var_name: str) -> str:
+    value = os.getenv(var_name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable {var_name}.")
+    return value
+
+
 def _build_db_uri() -> str:
-    pg_user     = os.getenv("POSTGRES_USER",     "de_user")
-    pg_password = os.getenv("POSTGRES_PASSWORD", "de_password")
-    pg_host     = os.getenv("POSTGRES_HOST",     "postgres")   # Docker service name
-    pg_port     = os.getenv("POSTGRES_PORT",     "5432")       # Container internal port
-    pg_db       = os.getenv("POSTGRES_DB",       "ecommerce_db")
-    uri = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
+    rds_user     = require_rds_env("RDS_USER")
+    rds_password = require_rds_env("RDS_PASSWORD")
+    rds_host     = require_rds_env("RDS_HOST")
+    rds_port     = require_rds_env("RDS_PORT")
+    rds_db       = require_rds_env("RDS_DB")
+    uri = f"postgresql://{rds_user}:{rds_password}@{rds_host}:{rds_port}/{rds_db}"
     logger.info(
         "[load_csv] DB → host=%s port=%s db=%s user=%s",
-        pg_host, pg_port, pg_db, pg_user,
+        rds_host, rds_port, rds_db, rds_user,
     )
     return uri
 
@@ -76,9 +82,9 @@ def get_engine():
     Wraps creation in try-except so a bad host/password produces a clear log
     entry instead of a raw traceback.
     """
-    pg_host = os.getenv("POSTGRES_HOST", "postgres")
-    pg_db   = os.getenv("POSTGRES_DB",   "ecommerce_db")
-    logger.info("[load_csv] Creating engine → host=%s db=%s", pg_host, pg_db)
+    rds_host = os.getenv("RDS_HOST", "postgres")
+    rds_db   = os.getenv("RDS_DB",   "ecommerce_db")
+    logger.info("[load_csv] Creating engine → host=%s db=%s", rds_host, rds_db)
     try:
         engine = create_engine(DB_URI)
         # Lightweight connectivity probe (does NOT open a real connection yet,
@@ -89,9 +95,9 @@ def get_engine():
             "[load_csv] ❌ Failed to create DB engine!\n"
             "  host : %s\n"
             "  db   : %s\n"
-            "  Verify POSTGRES_HOST / POSTGRES_PASSWORD env vars.\n"
+            "  Verify RDS_HOST / RDS_PASSWORD env vars.\n"
             "  Error: %s",
-            pg_host, pg_db, exc,
+            rds_host, rds_db, exc,
         )
         raise
 

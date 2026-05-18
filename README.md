@@ -107,18 +107,33 @@ Mỗi thành phần của hạ tầng được giải trình chi tiết kỹ thu
 - Docker & Docker Compose installed.
 - Terraform CLI installed.
 
-### 2. Infrastructure Setup
+### 2. Required EC2 environment variables
+The project now uses a single credential source for all PostgreSQL connections:
+- `RDS_HOST`
+- `RDS_PORT`
+- `RDS_DB`
+- `RDS_USER`
+- `RDS_PASSWORD`
+
+The Airflow containers expect the RDS SSL root certificate at `/opt/airflow/certs/global-bundle.pem`.
+
+### 3. Infrastructure Setup
 ```bash
 cd terraform
 terraform init
 terraform apply -auto-approve
 ```
 
-### 3. Application Launch
+### 4. Application Launch
 ```bash
-cp .env.example .env  # Update your AWS & DB Credentials
+cp .env.example .env  # Update your RDS and AWS credentials
 docker compose up -d
 ```
+
+### 5. How credentials flow
+- `docker-compose.yml` injects `RDS_*` into Airflow and the local Postgres service.
+- `dbt_project/profiles.yml` reads credentials from `RDS_*`.
+- `scripts/validate_rds_env.sh` verifies required RDS vars and the SSL cert before Airflow starts.
 
 ---
 

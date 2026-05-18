@@ -60,17 +60,25 @@ def _require_s3_bucket() -> str:
 
 
 # ── DB URI — nhất quán với load_csv.py ───────────────────────────────────────
+def require_rds_env(var_name: str) -> str:
+    """Fail fast when required RDS credentials are missing."""
+    value = os.getenv(var_name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable {var_name}.")
+    return value
+
+
 def _build_db_uri() -> str:
-    """Build PostgreSQL URI từ env vars — KHÔNG hardcode credential."""
-    pg_user     = os.getenv("POSTGRES_USER",     "de_user")
-    pg_password = os.getenv("POSTGRES_PASSWORD", "de_password")
-    pg_host     = os.getenv("POSTGRES_HOST",     "postgres")   # Docker service name
-    pg_port     = os.getenv("POSTGRES_PORT",     "5432")
-    pg_db       = os.getenv("POSTGRES_DB",       "ecommerce_db")
-    uri = f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
+    """Build PostgreSQL URI from canonical RDS_* env vars."""
+    rds_user     = require_rds_env("RDS_USER")
+    rds_password = require_rds_env("RDS_PASSWORD")
+    rds_host     = require_rds_env("RDS_HOST")
+    rds_port     = require_rds_env("RDS_PORT")
+    rds_db       = require_rds_env("RDS_DB")
+    uri = f"postgresql://{rds_user}:{rds_password}@{rds_host}:{rds_port}/{rds_db}"
     logger.info(
         "[load_streaming] DB → host=%s port=%s db=%s user=%s",
-        pg_host, pg_port, pg_db, pg_user,
+        rds_host, rds_port, rds_db, rds_user,
     )
     return uri
 

@@ -58,15 +58,44 @@ SIM_SCRIPT = os.path.join(INGESTION_DIR, "simulate_data.py")
 EXPORT_SCRIPT = os.path.join(PROJECT_ROOT, "scripts", "export_to_s3.py")
 FORECAST_SCRIPT = os.path.join(PROJECT_ROOT, "analytics", "sales_forecast.py")
 
-def get_db_uri() -> str:
-    pg_user     = os.getenv("POSTGRES_USER",     "de_user")
-    pg_password = os.getenv("POSTGRES_PASSWORD", "de_password")
-    pg_host     = os.getenv("POSTGRES_HOST",     "postgres")
-    pg_port     = os.getenv("POSTGRES_PORT",     "5432")
-    pg_db       = os.getenv("POSTGRES_DB",       "ecommerce_db")
-    return f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
+REQUIRED_RDS_ENV = [
+    "RDS_HOST",
+    "RDS_PORT",
+    "RDS_DB",
+    "RDS_USER",
+    "RDS_PASSWORD",
+]
 
-DB_URI = get_db_uri()
+
+def require_rds_env(var_name: str) -> str:
+    value = os.getenv(var_name)
+    if not value:
+        raise AirflowException(
+            f"Missing required environment variable {var_name}. "
+            "Set it in .env or deployment secrets."
+        )
+    return value
+
+
+def get_rds_db_uri() -> str:
+    return (
+        f"postgresql://{require_rds_env('RDS_USER')}:{require_rds_env('RDS_PASSWORD')}@"
+        f"{require_rds_env('RDS_HOST')}:{require_rds_env('RDS_PORT')}/{require_rds_env('RDS_DB')}"
+    )
+
+
+def get_dbt_env() -> dict[str, str]:
+    return {
+        "PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
+        "RDS_HOST": require_rds_env("RDS_HOST"),
+        "RDS_PORT": require_rds_env("RDS_PORT"),
+        "RDS_DB": require_rds_env("RDS_DB"),
+        "RDS_USER": require_rds_env("RDS_USER"),
+        "RDS_PASSWORD": require_rds_env("RDS_PASSWORD"),
+    }
+
+
+DB_URI = get_rds_db_uri()
 
 DBT_TARGET = Variable.get("DBT_TARGET", os.getenv("DBT_TARGET", "prod"))
 
@@ -186,57 +215,25 @@ with DAG(
     dbt_run_staging = BashOperator(
         task_id="dbt_run_staging",
         bash_command=f"{dbt_base_cmd} run --select staging.* --target {DBT_TARGET} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}",
-        env={
-            "PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
-            "POSTGRES_USER": os.getenv("POSTGRES_USER", "de_user"),
-            "POSTGRES_PASSWORD": os.getenv("POSTGRES_PASSWORD", "de_password"),
-            "POSTGRES_HOST": os.getenv("POSTGRES_HOST", "postgres"),
-            "POSTGRES_PORT": os.getenv("POSTGRES_PORT", "5432"),
-            "POSTGRES_DB": os.getenv("POSTGRES_DB", "ecommerce_db"),
-        },
-        append_env=True,
+        env=get_dbt_env(),
     )
 
     dbt_test_staging = BashOperator(
         task_id="dbt_test_staging",
         bash_command=f"{dbt_base_cmd} test --select staging.* --target {DBT_TARGET} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}",
-        env={
-            "PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
-            "POSTGRES_USER": os.getenv("POSTGRES_USER", "de_user"),
-            "POSTGRES_PASSWORD": os.getenv("POSTGRES_PASSWORD", "de_password"),
-            "POSTGRES_HOST": os.getenv("POSTGRES_HOST", "postgres"),
-            "POSTGRES_PORT": os.getenv("POSTGRES_PORT", "5432"),
-            "POSTGRES_DB": os.getenv("POSTGRES_DB", "ecommerce_db"),
-        },
-        append_env=True,
+        env=get_dbt_env(),
     )
 
     dbt_run_marts = BashOperator(
         task_id="dbt_run_marts",
         bash_command=f"{dbt_base_cmd} run --select marts.* --target {DBT_TARGET} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}",
-        env={
-            "PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
-            "POSTGRES_USER": os.getenv("POSTGRES_USER", "de_user"),
-            "POSTGRES_PASSWORD": os.getenv("POSTGRES_PASSWORD", "de_password"),
-            "POSTGRES_HOST": os.getenv("POSTGRES_HOST", "postgres"),
-            "POSTGRES_PORT": os.getenv("POSTGRES_PORT", "5432"),
-            "POSTGRES_DB": os.getenv("POSTGRES_DB", "ecommerce_db"),
-        },
-        append_env=True,
+        env=get_dbt_env(),
     )
 
     dbt_test_marts = BashOperator(
         task_id="dbt_test_marts",
         bash_command=f"{dbt_base_cmd} test --select marts.* --target {DBT_TARGET} --project-dir {DBT_PROJECT_DIR} --profiles-dir {DBT_PROFILES_DIR}",
-        env={
-            "PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
-            "POSTGRES_USER": os.getenv("POSTGRES_USER", "de_user"),
-            "POSTGRES_PASSWORD": os.getenv("POSTGRES_PASSWORD", "de_password"),
-            "POSTGRES_HOST": os.getenv("POSTGRES_HOST", "postgres"),
-            "POSTGRES_PORT": os.getenv("POSTGRES_PORT", "5432"),
-            "POSTGRES_DB": os.getenv("POSTGRES_DB", "ecommerce_db"),
-        },
-        append_env=True,
+        env=get_dbt_env(),
     )
 
     export_to_s3_task = PythonOperator(task_id="export_processed_to_s3", python_callable=run_export_s3)

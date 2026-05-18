@@ -18,9 +18,9 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: de_user
-          POSTGRES_PASSWORD: de_password
-          POSTGRES_DB: ecommerce_db
+          POSTGRES_USER: ${{ env.RDS_USER }}
+          POSTGRES_PASSWORD: ${{ env.RDS_PASSWORD }}
+          POSTGRES_DB: ${{ env.RDS_DB }}
         ports:
           - 5432:5432
         options: >-
@@ -31,12 +31,11 @@ jobs:
 
     env:
       DBT_PROFILES_DIR: ./dbt_project
-      DBT_DEV_HOST: localhost
-      DBT_DEV_PORT: 5432
-      DBT_DEV_USER: de_user
-      DBT_DEV_PASSWORD: de_password
-      DBT_DEV_DBNAME: ecommerce_db
-      DBT_DEV_SCHEMA: analytics_ci
+      RDS_HOST: localhost
+      RDS_PORT: 5432
+      RDS_USER: de_user
+      RDS_PASSWORD: de_password
+      RDS_DB: ecommerce_db
       ENVIRONMENT: ci
 
     steps:

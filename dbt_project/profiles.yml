@@ -11,7 +11,7 @@ ecommerce:
       port: "{{ env_var('RDS_PORT') | int }}"
       user: "{{ env_var('RDS_USER') }}"
       password: "{{ env_var('RDS_PASSWORD') }}"
-      dbname: "{{ env_var('RDS_DBNAME') }}"
+      dbname: "{{ env_var('RDS_DB') }}"
       schema: analytics
       threads: 8
 
@@ -25,11 +25,11 @@ ecommerce:
     # --- DEVELOPMENT ENVIRONMENT (Local/Staging) ---
     dev:
       type: postgres
-      host: "{{ env_var('DBT_DEV_HOST') }}"
-      port: "{{ env_var('DBT_DEV_PORT') | int }}"
-      user: "{{ env_var('DBT_DEV_USER') }}"
-      password: "{{ env_var('DBT_DEV_PASSWORD') }}"
-      dbname: "{{ env_var('DBT_DEV_DBNAME') }}"
-      schema: "{{ env_var('DBT_DEV_SCHEMA') }}"
+      host: "{{ env_var('RDS_HOST') }}"
+      port: "{{ env_var('RDS_PORT') | int }}"
+      user: "{{ env_var('RDS_USER') }}"
+      password: "{{ env_var('RDS_PASSWORD') }}"
+      dbname: "{{ env_var('RDS_DB') }}"
+      schema: analytics_dev
       threads: 4
       keepalives_idle: 0

@@ -64,8 +64,8 @@ CREATE TABLE IF NOT EXISTS public.pipeline_bootstrap_notes (
 INSERT INTO public.pipeline_bootstrap_notes (variable_key, variable_value, description) VALUES
     ('ENVIRONMENT',         'dev',
      'Môi trường chạy pipeline. Giá trị: dev | prod. DAG dùng biến này để chọn dbt target.'),
-    ('DB_URI_LOCAL',        'postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@<POSTGRES_HOST>:<POSTGRES_PORT>/<POSTGRES_DB>',
-     'Connection string local được assemble từ env vars POSTGRES_* thay vì hard-code trong production.'),
+    ('DB_URI_LOCAL',        'postgresql://<RDS_USER>:<RDS_PASSWORD>@<RDS_HOST>:<RDS_PORT>/<RDS_DB>',
+     'Connection string local được assemble từ canonical RDS_* env vars thay vì hard-code trong production.'),
     ('DATA_DIR',            '/opt/airflow/data',
      'Đường dẫn thư mục chứa CSV files trong Docker container (mount từ ./data trên host).'),
     ('DBT_PROJECT_DIR',     '/opt/airflow/dbt_project/ecommerce',
@@ -99,7 +99,7 @@ INSERT INTO public.pipeline_connection_notes
     (conn_id, conn_type, host, schema_name, login, description) VALUES
     ('postgres_ecommerce', 'postgres',
      'postgres', 'ecommerce_db', 'de_user',
-     'Kết nối tới PostgreSQL local (Docker). Password lấy từ env/secrets manager. Port nội bộ mặc định: 5432.'),
+     'Kết nối tới PostgreSQL local (Docker). Username/password lấy từ canonical RDS_* env vars. Port nội bộ mặc định: 5432.'),
     ('aws_rds_production', 'postgres',
      'RDS_HOST_FROM_ENV',
      'ecommerce_db', 'RDS_USER_FROM_ENV',

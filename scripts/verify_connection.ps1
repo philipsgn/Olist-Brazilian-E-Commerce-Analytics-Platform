@@ -24,10 +24,10 @@ Get-Content $envFile | Where-Object { $_ -match "^\s*[^#]" -and $_ -match "=" } 
     [System.Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1].Trim(), "Process")
 }
 
-$PG_HOST = $env:POSTGRES_HOST
-$PG_PORT = $env:POSTGRES_PORT
-$PG_USER = $env:POSTGRES_USER
-$PG_DB   = $env:POSTGRES_DB
+$PG_HOST = $env:RDS_HOST
+$PG_PORT = $env:RDS_PORT
+$PG_USER = $env:RDS_USER
+$PG_DB   = $env:RDS_DB
 
 Write-Host "  HOST : $PG_HOST" -ForegroundColor White
 Write-Host "  PORT : $PG_PORT" -ForegroundColor White
@@ -49,7 +49,7 @@ try {
 
 # --- psql query ---------------------------------------------------------------
 Write-Host "`n[3/4] psql SELECT 1 test..." -ForegroundColor Cyan
-$env:PGPASSWORD = $env:POSTGRES_PASSWORD
+$env:PGPASSWORD = $env:RDS_PASSWORD
 $result = psql -h $PG_HOST -p $PG_PORT -U $PG_USER -d $PG_DB -c "SELECT 1 AS ping;" 2>&1
 if ($LASTEXITCODE -eq 0) {
     Write-Host "  ✅ psql OK" -ForegroundColor Green
@@ -57,7 +57,7 @@ if ($LASTEXITCODE -eq 0) {
 } else {
     Write-Host "  ❌ psql FAILED" -ForegroundColor Red
     Write-Host $result
-    Write-Host "  → Wrong password? Check POSTGRES_PASSWORD in .env" -ForegroundColor Yellow
+    Write-Host "  → Wrong password? Check RDS_PASSWORD in .env" -ForegroundColor Yellow
     exit 1
 }
 
