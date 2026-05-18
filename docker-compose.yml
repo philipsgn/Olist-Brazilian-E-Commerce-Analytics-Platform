@@ -87,7 +87,7 @@ services:
       --password ${AIRFLOW_ADMIN_PASSWORD} || true &&
       exec airflow webserver"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)\""]
+      test: ["CMD-SHELL", "test -f /opt/airflow/certs/global-bundle.pem && python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)\""]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -98,7 +98,7 @@ services:
     container_name: de_airflow_scheduler
     command: "airflow scheduler"
     healthcheck:
-      test: ["CMD-SHELL", "AIRFLOW__LOGGING__LOGGING_LEVEL=ERROR airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      test: ["CMD-SHELL", "test -f /opt/airflow/certs/global-bundle.pem && AIRFLOW__LOGGING__LOGGING_LEVEL=ERROR airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -116,7 +116,7 @@ services:
         condition: service_healthy
     command: "airflow celery worker"
     healthcheck:
-      test: ["CMD-SHELL", "celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d \"celery@$${HOSTNAME}\""]
+      test: ["CMD-SHELL", "test -f /opt/airflow/certs/global-bundle.pem && celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d \"celery@$${HOSTNAME}\""]
       interval: 30s
       timeout: 10s
       retries: 5

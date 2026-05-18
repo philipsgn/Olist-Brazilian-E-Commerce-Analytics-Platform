@@ -1,6 +1,19 @@
 FROM apache/airflow:2.9.3
 
-# Switch to the default airflow user (not root) to ensure correct file permissions
+# Ensure the runtime cert is present inside the image as a fallback for CI/build
+# and environments where bind-mounts may not be available during image-based runs.
+# We'll create the dir, copy the cert, set secure permissions, then switch back
+# to the non-root `airflow` user for the normal image build steps.
+USER root
+RUN mkdir -p /opt/airflow/certs && \
+    chown root:root /opt/airflow/certs && \
+    chmod 755 /opt/airflow/certs
+COPY certs/global-bundle.pem /opt/airflow/certs/global-bundle.pem
+RUN chown root:root /opt/airflow/certs/global-bundle.pem && \
+    chmod 644 /opt/airflow/certs/global-bundle.pem
+
+# Switch to the default airflow user (not root) to ensure subsequent steps
+# run with the non-privileged account as before.
 USER airflow
 
 # Upgrade pip to ensure the latest package resolution logic
