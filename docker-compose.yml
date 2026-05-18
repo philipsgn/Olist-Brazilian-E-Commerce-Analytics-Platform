@@ -33,6 +33,7 @@ x-airflow-common: &airflow-common
     - ./scripts:/opt/airflow/scripts
     - ./analytics:/opt/airflow/analytics
     - ./tmp:/opt/airflow/tmp
+    - ./certs:/opt/airflow/certs:ro
   depends_on:
     postgres:
       condition: service_healthy
