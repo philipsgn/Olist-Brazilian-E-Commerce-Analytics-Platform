@@ -13,13 +13,25 @@ x-airflow-common: &airflow-common
     - .env
   user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-0}"
   environment: &airflow-common-env
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://${RDS_USER}:${RDS_PASSWORD}@${RDS_HOST:-postgres}:${RDS_PORT:-5432}/${RDS_DB}"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_AIRFLOW_DB:-airflow}"
     AIRFLOW__CELERY__BROKER_URL: "redis://${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/0"
-    AIRFLOW__CELERY__RESULT_BACKEND: "db+postgresql://${RDS_USER}:${RDS_PASSWORD}@${RDS_HOST:-postgres}:${RDS_PORT:-5432}/${RDS_DB}"
+    AIRFLOW__CELERY__RESULT_BACKEND: "db+postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_AIRFLOW_DB:-airflow}"
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
     AIRFLOW__CORE__FERNET_KEY: "${AIRFLOW_FERNET_KEY}"
     AIRFLOW__WEBSERVER__SECRET_KEY: "${AIRFLOW_WEBSERVER_SECRET_KEY}"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
+    POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+    POSTGRES_USER: "${POSTGRES_USER:-de_user}"
+    POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-de_password}"
+    POSTGRES_DB: "${POSTGRES_DB:-ecommerce_db}"
+    POSTGRES_AIRFLOW_DB: "${POSTGRES_AIRFLOW_DB:-airflow}"
+    POSTGRES_SUPERSET_DB: "${POSTGRES_SUPERSET_DB:-superset}"
+    RDS_HOST: "${RDS_HOST:-postgres}"
+    RDS_PORT: "${RDS_PORT:-5432}"
+    RDS_USER: "${RDS_USER:-de_user}"
+    RDS_PASSWORD: "${RDS_PASSWORD:-de_password}"
+    RDS_DB: "${RDS_DB:-ecommerce_db}"
     PYTHONPATH: "${PYTHONPATH:-/opt/airflow}"
   volumes:
     # Relative mounts keep the stack portable between local, staging, and EC2.
@@ -46,15 +58,15 @@ services:
     image: postgres:15
     container_name: de_postgres
     environment:
-      POSTGRES_USER: "${RDS_USER}"
-      POSTGRES_PASSWORD: "${RDS_PASSWORD}"
-      POSTGRES_DB: "${RDS_DB}"
+      POSTGRES_USER: "${POSTGRES_USER:-de_user}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-de_password}"
+      POSTGRES_DB: "${POSTGRES_DB:-ecommerce_db}"
     ports:
       - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${RDS_USER} -d ${RDS_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-de_user} -d ${POSTGRES_DB:-ecommerce_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -139,8 +151,11 @@ services:
     environment:
       SUPERSET_SECRET_KEY: "${SUPERSET_SECRET_KEY}"
       ADMIN_PASSWORD: "${SUPERSET_ADMIN_PASSWORD}"
-      RDS_HOST: "${RDS_HOST:-postgres}"
-      RDS_PORT: "${RDS_PORT:-5432}"
+      POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      POSTGRES_USER: "${POSTGRES_USER:-de_user}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-de_password}"
+      POSTGRES_SUPERSET_DB: "${POSTGRES_SUPERSET_DB:-superset}"
     volumes:
       - ./superset_home:/app/superset_home
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py

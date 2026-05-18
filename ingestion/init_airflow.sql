@@ -23,6 +23,12 @@ WHERE NOT EXISTS (
     SELECT FROM pg_database WHERE datname = 'airflow'
 )\gexec
 
+SELECT 'CREATE DATABASE superset OWNER de_user'
+WHERE NOT EXISTS (
+    SELECT FROM pg_database WHERE datname = 'superset'
+)
+\gexec
+
 
 -- ─────────────────────────────────────────────
 -- BƯỚC 2: Kết nối vào airflow database để setup
@@ -36,6 +42,7 @@ WHERE NOT EXISTS (
 --  đảm bảo user có quyền)
 -- ─────────────────────────────────────────────
 GRANT ALL PRIVILEGES ON DATABASE airflow TO de_user;
+GRANT ALL PRIVILEGES ON DATABASE superset TO de_user;
 GRANT ALL ON SCHEMA public TO de_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO de_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO de_user;

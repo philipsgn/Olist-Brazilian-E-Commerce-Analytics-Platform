@@ -18,9 +18,9 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: ${{ env.RDS_USER }}
-          POSTGRES_PASSWORD: ${{ env.RDS_PASSWORD }}
-          POSTGRES_DB: ${{ env.RDS_DB }}
+          POSTGRES_USER: de_user
+          POSTGRES_PASSWORD: de_password
+          POSTGRES_DB: ecommerce_db
         ports:
           - 5432:5432
         options: >-
@@ -31,6 +31,11 @@ jobs:
 
     env:
       DBT_PROFILES_DIR: ./dbt_project
+      POSTGRES_USER: de_user
+      POSTGRES_PASSWORD: de_password
+      POSTGRES_DB: ecommerce_db
+      POSTGRES_AIRFLOW_DB: airflow
+      POSTGRES_SUPERSET_DB: superset
       RDS_HOST: localhost
       RDS_PORT: 5432
       RDS_USER: de_user

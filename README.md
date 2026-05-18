@@ -108,12 +108,11 @@ Mỗi thành phần của hạ tầng được giải trình chi tiết kỹ thu
 - Terraform CLI installed.
 
 ### 2. Required EC2 environment variables
-The project now uses a single credential source for all PostgreSQL connections:
-- `RDS_HOST`
-- `RDS_PORT`
-- `RDS_DB`
-- `RDS_USER`
-- `RDS_PASSWORD`
+This project separates metadata storage from analytics warehousing:
+- `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` — internal Docker Postgres for metadata and local development.
+- `POSTGRES_AIRFLOW_DB` — internal Postgres database name for Airflow metadata (default: `airflow`).
+- `POSTGRES_SUPERSET_DB` — internal Postgres database name for Superset metadata (default: `superset`).
+- `RDS_HOST`, `RDS_PORT`, `RDS_USER`, `RDS_PASSWORD`, `RDS_DB` — AWS RDS analytics warehouse used by dbt and production ecommerce data.
 
 The Airflow containers expect the RDS SSL root certificate at `/opt/airflow/certs/global-bundle.pem`.
 
@@ -126,14 +125,16 @@ terraform apply -auto-approve
 
 ### 4. Application Launch
 ```bash
-cp .env.example .env  # Update your RDS and AWS credentials
+cp .env.example .env  # Update your POSTGRES_*, RDS_* and AWS credentials
 docker compose up -d
 ```
 
 ### 5. How credentials flow
-- `docker-compose.yml` injects `RDS_*` into Airflow and the local Postgres service.
-- `dbt_project/profiles.yml` reads credentials from `RDS_*`.
-- `scripts/validate_rds_env.sh` verifies required RDS vars and the SSL cert before Airflow starts.
+- `docker-compose.yml` configures the internal Postgres service using `POSTGRES_*` and passes both `POSTGRES_*` and `RDS_*` into Airflow.
+- Airflow metadata and Celery backend use internal `POSTGRES_*` values.
+- Superset metadata uses internal `POSTGRES_*` values.
+- `dbt_project/profiles.yml` reads credentials from `RDS_*` only.
+- `scripts/validate_rds_env.sh` verifies required RDS vars and the SSL cert before dbt-related tasks run.
 
 ---
 

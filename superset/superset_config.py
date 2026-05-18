@@ -6,11 +6,11 @@ All sensitive values are read from environment variables.
 Provide them via docker-compose .env, EC2 UserData, or AWS Secrets Manager.
 
 Required env vars:
-  RDS_USER       — PostgreSQL username  (default: de_user)
-  RDS_PASSWORD   — PostgreSQL password  (default: de_password)
-  RDS_HOST       — Database host        (default: postgres)
-  RDS_PORT       — Database port        (default: 5432)
-  RDS_DB         — Database name        (default: ecommerce_db)
+    POSTGRES_USER       — PostgreSQL username  (default: de_user)
+    POSTGRES_PASSWORD   — PostgreSQL password  (default: de_password)
+    POSTGRES_HOST       — Database host        (default: postgres)
+    POSTGRES_PORT       — Database port        (default: 5432)
+    POSTGRES_SUPERSET_DB — Database name       (default: superset)
   SUPERSET_SECRET_KEY — Flask secret key     (REQUIRED in production)
 =============================================================================
 """
@@ -24,14 +24,15 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "dev").lower()
 # ---------------------------------------------------------------------------
 # Metadata DB — where Superset stores dashboards, charts, users, etc.
 # ---------------------------------------------------------------------------
-_pg_user     = os.getenv("RDS_USER",     "de_user")
-_pg_password = os.getenv("RDS_PASSWORD", "de_password")
-_pg_host     = os.getenv("RDS_HOST",     "postgres")   # Docker service name
-_pg_port     = os.getenv("RDS_PORT",     "5432")        # Internal Docker port
-_pg_db       = os.getenv("RDS_DB",       "ecommerce_db")
+_pg_user     = os.getenv("POSTGRES_USER",     "de_user")
+_pg_password = os.getenv("POSTGRES_PASSWORD", "de_password")
+_pg_host     = os.getenv("POSTGRES_HOST",     "postgres")   # Docker service name
+_pg_port     = os.getenv("POSTGRES_PORT",     "5432")        # Internal Docker port
+_pg_db       = os.getenv("POSTGRES_SUPERSET_DB", "superset")
 
-# Use SQLite for Superset metadata to prevent Alembic collision with Airflow on ecommerce_db
-SQLALCHEMY_DATABASE_URI = "sqlite:////app/superset_home/superset.db"
+SQLALCHEMY_DATABASE_URI = (
+    f"postgresql+psycopg2://{_pg_user}:{_pg_password}@{_pg_host}:{_pg_port}/{_pg_db}"
+)
 
 logger.info(
     "[superset_config] Metadata DB → host=%s port=%s db=%s user=%s",

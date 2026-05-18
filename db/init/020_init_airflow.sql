@@ -13,7 +13,14 @@
 SELECT 'CREATE DATABASE airflow OWNER de_user'
 WHERE NOT EXISTS (
     SELECT FROM pg_database WHERE datname = 'airflow'
-)\gexec
+)
+\gexec
+
+SELECT 'CREATE DATABASE superset OWNER de_user'
+WHERE NOT EXISTS (
+    SELECT FROM pg_database WHERE datname = 'superset'
+)
+\gexec
 
 
 -- ─────────────────────────────────────────────
@@ -26,6 +33,7 @@ WHERE NOT EXISTS (
 -- BƯỚC 3: Cấp quyền đầy đủ cho de_user
 -- ─────────────────────────────────────────────
 GRANT ALL PRIVILEGES ON DATABASE airflow TO de_user;
+GRANT ALL PRIVILEGES ON DATABASE superset TO de_user;
 GRANT ALL ON SCHEMA public TO de_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO de_user;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO de_user;
