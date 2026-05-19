@@ -1,0 +1,119 @@
+name: Deploy to EC2
+
+on:
+  workflow_run:
+    workflows:
+      - Production Data Pipeline CI/CD
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  deploy:
+    name: CD - Zero-Touch Deploy to AWS EC2
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    environment:
+      name: production
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+
+      - name: Validate Deployment Secrets
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          test -n "${EC2_HOST}" || { echo "ERROR: EC2_HOST secret is empty."; exit 1; }
+          test -n "${EC2_USER}" || { echo "ERROR: EC2_USER secret is empty."; exit 1; }
+          test -n "${EC2_SSH_KEY}" || { echo "ERROR: EC2_SSH_KEY secret is empty."; exit 1; }
+
+      - name: Configure SSH
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${EC2_SSH_KEY}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          CLEAN_HOST="$(echo -n "${EC2_HOST}" | tr -d '[:space:]')"
+          ssh-keyscan -H "${CLEAN_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Rsync Source to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          set -euo pipefail
+          CLEAN_HOST="$(echo -n "${EC2_HOST}" | tr -d '[:space:]')"
+          PROJECT_DIR="/home/${EC2_USER}/Olist-Brazilian-E-Commerce-Analytics-Platform"
+          SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o ConnectTimeout=30"
+
+          ssh ${SSH_OPTS} "${EC2_USER}@${CLEAN_HOST}" "mkdir -p '${PROJECT_DIR}'"
+
+          rsync -az --delete \
+            -e "ssh ${SSH_OPTS}" \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            --exclude='__pycache__/' \
+            --exclude='*.pyc' \
+            --exclude='*.pyo' \
+            --exclude='.pytest_cache/' \
+            --exclude='.mypy_cache/' \
+            --exclude='.ruff_cache/' \
+            --exclude='.venv/' \
+            --exclude='*.log' \
+            --exclude='airflow/logs/' \
+            --exclude='dbt_project/ecommerce/logs/' \
+            --exclude='dbt_project/ecommerce/target/' \
+            --exclude='dbt_project/ecommerce/dbt_packages/' \
+            --exclude='logs/' \
+            --exclude='tmp/' \
+            ./ "${EC2_USER}@${CLEAN_HOST}:${PROJECT_DIR}/"
+
+      - name: Restart Docker Compose Stack
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script_stop: true
+          timeout: 2m
+          command_timeout: 45m
+          script: |
+            set -euo pipefail
+            PROJECT_DIR="/home/${{ secrets.EC2_USER }}/Olist-Brazilian-E-Commerce-Analytics-Platform"
+            cd "${PROJECT_DIR}"
+
+            if [ ! -f docker-compose.yml ]; then
+              echo "ERROR: docker-compose.yml is missing from ${PROJECT_DIR}"
+              exit 1
+            fi
+
+            if [ ! -f .env ]; then
+              echo "ERROR: .env must exist on EC2 before deployment."
+              exit 1
+            fi
+
+            sudo docker compose down --remove-orphans
+            sudo docker compose up -d --build --remove-orphans
+            sudo docker compose ps

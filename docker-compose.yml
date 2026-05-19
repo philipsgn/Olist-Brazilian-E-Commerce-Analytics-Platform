@@ -34,7 +34,6 @@ x-airflow-common: &airflow-common
     RDS_DB: "${RDS_DB:-ecommerce_db}"
     PYTHONPATH: "${PYTHONPATH:-/opt/airflow}"
   volumes:
-    # Relative mounts keep the stack portable between local, staging, and EC2.
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
@@ -47,12 +46,86 @@ x-airflow-common: &airflow-common
     - ./tmp:/opt/airflow/tmp
     - ./certs:/opt/airflow/certs:ro
   depends_on:
+    airflow-init:
+      condition: service_completed_successfully
+    postgres-bootstrap:
+      condition: service_completed_successfully
     postgres:
       condition: service_healthy
+      required: false
     redis:
       condition: service_healthy
 
 services:
+  # ---------------------------------------------------------------------------
+  # One-shot init: filesystem permissions for Airflow bind mounts (host ↔ container UID)
+  # ---------------------------------------------------------------------------
+  airflow-init:
+    image: bash:5.2-alpine3.19
+    container_name: de_airflow_init
+    user: root
+    restart: "no"
+    environment:
+      AIRFLOW_UID: "${AIRFLOW_UID:-50000}"
+      AIRFLOW_GID: "${AIRFLOW_GID:-0}"
+    volumes:
+      - ./scripts/init/airflow-init.sh:/init/airflow-init.sh:ro
+      - ./airflow/dags:/mnt/airflow/dags
+      - ./airflow/logs:/mnt/airflow/logs
+      - ./airflow/plugins:/mnt/airflow/plugins
+      - ./airflow/utils:/mnt/airflow/utils
+      - ./data:/mnt/data
+      - ./ingestion:/mnt/ingestion
+      - ./dbt_project:/mnt/dbt_project
+      - ./scripts:/mnt/scripts
+      - ./analytics:/mnt/analytics
+      - ./tmp:/mnt/tmp
+      - ./certs:/mnt/certs:ro
+    entrypoint: ["/bin/bash", "-c", "sed 's/\\r$//' /init/airflow-init.sh | bash"]
+
+  # ---------------------------------------------------------------------------
+  # One-shot init: idempotent CREATE DATABASE for Airflow/Superset metadata (local Postgres or RDS)
+  # ---------------------------------------------------------------------------
+  postgres-bootstrap:
+    image: postgres:15
+    container_name: de_postgres_bootstrap
+    user: root
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      POSTGRES_USER: "${POSTGRES_USER:-de_user}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-de_password}"
+      POSTGRES_AIRFLOW_DB: "${POSTGRES_AIRFLOW_DB:-airflow}"
+      POSTGRES_SUPERSET_DB: "${POSTGRES_SUPERSET_DB:-superset}"
+      POSTGRES_SSLMODE: "${POSTGRES_SSLMODE:-prefer}"
+      PGSSLMODE: "${POSTGRES_SSLMODE:-prefer}"
+    volumes:
+      - ./scripts/init/ensure_postgres_databases.sh:/init/ensure_postgres_databases.sh:ro
+    entrypoint: ["/bin/bash", "-c", "sed 's/\\r$//' /init/ensure_postgres_databases.sh | bash"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+
+  # ---------------------------------------------------------------------------
+  # One-shot init: ownership for Superset named volume (apache/superset runs as UID 1000)
+  # ---------------------------------------------------------------------------
+  superset-init:
+    image: bash:5.2-alpine3.19
+    container_name: de_superset_init
+    user: root
+    restart: "no"
+    environment:
+      SUPERSET_UID: "${SUPERSET_UID:-1000}"
+      SUPERSET_GID: "${SUPERSET_GID:-1000}"
+    volumes:
+      - ./scripts/init/superset-init.sh:/init/superset-init.sh:ro
+      - superset_home:/app/superset_home
+    entrypoint: ["/bin/bash", "-c", "sed 's/\\r$//' /init/superset-init.sh | bash"]
+
   postgres:
     <<: *service-defaults
     image: postgres:15
@@ -65,6 +138,7 @@ services:
       - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-de_user} -d ${POSTGRES_DB:-ecommerce_db}"]
       interval: 10s
@@ -121,10 +195,15 @@ services:
     <<: *airflow-common
     container_name: de_airflow_worker
     depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      postgres-bootstrap:
+        condition: service_completed_successfully
       airflow-scheduler:
         condition: service_started
       postgres:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
     command: "bash -c '/opt/airflow/scripts/validate_rds_env.sh && exec airflow celery worker'"
@@ -137,17 +216,23 @@ services:
 
   superset:
     <<: *service-defaults
-    image: apache/superset
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    image: de_superset:local
     container_name: de_superset
-    # Superset installs extra Python packages at container start, so root remains practical here.
-    user: "root"
     env_file:
       - .env
     ports:
       - "${SUPERSET_BIND_ADDRESS:-0.0.0.0}:${SUPERSET_HOST_PORT:-8088}:8088"
     depends_on:
+      superset-init:
+        condition: service_completed_successfully
+      postgres-bootstrap:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
+        required: false
     environment:
       SUPERSET_SECRET_KEY: "${SUPERSET_SECRET_KEY}"
       ADMIN_PASSWORD: "${SUPERSET_ADMIN_PASSWORD}"
@@ -157,11 +242,10 @@ services:
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-de_password}"
       POSTGRES_SUPERSET_DB: "${POSTGRES_SUPERSET_DB:-superset}"
     volumes:
-      - ./superset_home:/app/superset_home
-      - ./superset/superset_config.py:/app/pythonpath/superset_config.py
+      - superset_home:/app/superset_home
+      - ./superset/superset_config.py:/app/pythonpath/superset_config.py:ro
     command: >
-      bash -c "pip install psycopg2-binary pyathena --target /app/.venv/lib/python3.10/site-packages &&
-      superset db upgrade &&
+      bash -c "superset db upgrade &&
       superset fab create-admin
       --username ${SUPERSET_ADMIN_USER}
       --firstname ${SUPERSET_ADMIN_FIRSTNAME}
@@ -179,3 +263,4 @@ services:
 
 volumes:
   postgres_data:
+  superset_home:
