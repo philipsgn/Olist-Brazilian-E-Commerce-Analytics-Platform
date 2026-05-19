@@ -2,7 +2,7 @@ FROM apache/superset:latest
 
 USER root
 
-# Install database drivers at image build time — no runtime pip writes to bind mounts.
-RUN pip install --no-cache-dir psycopg2-binary pyathena
+# 🔴 SỬA TẠI ĐÂY: Trỏ thẳng vào pip bên trong thư mục .venv của Superset
+RUN /app/.venv/bin/pip install --no-cache-dir psycopg2-binary pyathena
 
 USER superset
