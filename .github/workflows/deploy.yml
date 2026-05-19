@@ -65,10 +65,14 @@ jobs:
           PROJECT_DIR="/home/${EC2_USER}/Olist-Brazilian-E-Commerce-Analytics-Platform"
           SSH_OPTS="-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o ConnectTimeout=30"
 
-          ssh ${SSH_OPTS} "${EC2_USER}@${CLEAN_HOST}" "mkdir -p '${PROJECT_DIR}'"
+          # Ép tạo thư mục cha bằng quyền sudo trên EC2 trước
+          ssh ${SSH_OPTS} "${EC2_USER}@${CLEAN_HOST}" "sudo mkdir -p '${PROJECT_DIR}' && sudo chown -R ${EC2_USER}:${EC2_USER} '${PROJECT_DIR}'"
 
+          echo "Starting rsync with superuser privileges..."
+          # 🔴 ĐIỂM SỬA QUAN TRỌNG: Thêm --rsync-path="sudo rsync" để đồng bộ hóa bằng quyền root trên EC2
           rsync -az --delete \
             -e "ssh ${SSH_OPTS}" \
+            --rsync-path="sudo rsync" \
             --exclude='.git/' \
             --exclude='.github/' \
             --exclude='.env' \
