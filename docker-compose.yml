@@ -61,7 +61,7 @@ services:
   # One-shot init: filesystem permissions for Airflow bind mounts (host ↔ container UID)
   # ---------------------------------------------------------------------------
   airflow-init:
-    image: bash:5.2-alpine3.19
+    image: ubuntu:22.04  # 🔴 SỬA TẠI ĐÂY: Đổi từ Alpine sang Ubuntu để có sẵn /bin/bash
     container_name: de_airflow_init
     user: root
     restart: "no"
@@ -81,13 +81,14 @@ services:
       - ./analytics:/mnt/analytics
       - ./tmp:/mnt/tmp
       - ./certs:/mnt/certs:ro
-    entrypoint: ["/bin/bash", "-c", "sed 's/\\r$//' /init/airflow-init.sh | bash"]
+    entrypoint: ["/bin/bash", "-c", "sed 's/\r$//' /init/airflow-init.sh | bash"]
 
   # ---------------------------------------------------------------------------
   # One-shot init: idempotent CREATE DATABASE for Airflow/Superset metadata (local Postgres or RDS)
   # ---------------------------------------------------------------------------
   postgres-bootstrap:
-    image: postgres:15
+    # 🔴 SỬA TẠI ĐÂY: Sử dụng image chứa postgres-client trên nền Debian để cài sẵn bash và lệnh psql công nghiệp
+    image: postgres:15  
     container_name: de_postgres_bootstrap
     user: root
     restart: "no"
@@ -104,7 +105,7 @@ services:
       PGSSLMODE: "${POSTGRES_SSLMODE:-prefer}"
     volumes:
       - ./scripts/init/ensure_postgres_databases.sh:/init/ensure_postgres_databases.sh:ro
-    entrypoint: ["/bin/bash", "-c", "sed 's/\\r$//' /init/ensure_postgres_databases.sh | bash"]
+    entrypoint: ["/bin/bash", "-c", "sed 's/\r$//' /init/ensure_postgres_databases.sh | bash"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -114,7 +115,7 @@ services:
   # One-shot init: ownership for Superset named volume (apache/superset runs as UID 1000)
   # ---------------------------------------------------------------------------
   superset-init:
-    image: bash:5.2-alpine3.19
+    image: ubuntu:22.04  # 🔴 SỬA TẠI ĐÂY: Đổi từ Alpine sang Ubuntu để có sẵn /bin/bash
     container_name: de_superset_init
     user: root
     restart: "no"
@@ -124,7 +125,7 @@ services:
     volumes:
       - ./scripts/init/superset-init.sh:/init/superset-init.sh:ro
       - superset_home:/app/superset_home
-    entrypoint: ["/bin/bash", "-c", "sed 's/\\r$//' /init/superset-init.sh | bash"]
+    entrypoint: ["/bin/bash", "-c", "sed 's/\r$//' /init/superset-init.sh | bash"]
 
   postgres:
     <<: *service-defaults
