@@ -1,7 +1,10 @@
 FROM apache/superset:latest
 
-# Chuyển sang user superset để cài thư viện vào đúng môi trường chạy của nó
-USER superset
+# Chuyển sang root để có toàn quyền ghi vào thư mục môi trường ảo /app/.venv
+USER root
 
-# Sử dụng pip mặc định của container để cài gói
-RUN pip install --no-cache-dir psycopg2-binary pyathena
+# Sử dụng chính xác trình thực thi python của venv để cài gói
+RUN /app/.venv/bin/python -m pip install --no-cache-dir psycopg2-binary pyathena
+
+# Trả lại quyền chạy an toàn cho user superset mặc định
+USER superset
