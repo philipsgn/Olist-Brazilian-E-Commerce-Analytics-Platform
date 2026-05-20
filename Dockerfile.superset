@@ -1,8 +1,7 @@
 FROM apache/superset:latest
 
-USER root
-
-# 🔴 SỬA TẠI ĐÂY: Trỏ thẳng vào pip bên trong thư mục .venv của Superset
-RUN /app/.venv/bin/pip install --no-cache-dir psycopg2-binary pyathena
-
+# Chuyển sang user superset để cài thư viện vào đúng môi trường chạy của nó
 USER superset
+
+# Sử dụng pip mặc định của container để cài gói
+RUN pip install --no-cache-dir psycopg2-binary pyathena
