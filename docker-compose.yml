@@ -220,20 +220,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.superset
-    image: de_superset:local
+    # 💡 1. SỬA DÒNG NÀY: Thay đổi tag image để Docker Compose tự quản lý tên chuẩn Production
+    image: olist-brazilian-ecommerce-superset:latest
     container_name: de_superset
     env_file:
       - .env
     ports:
       - "${SUPERSET_BIND_ADDRESS:-0.0.0.0}:${SUPERSET_HOST_PORT:-8088}:8088"
     depends_on:
-      superset-init:
-        condition: service_completed_successfully
-      postgres-bootstrap:
-        condition: service_completed_successfully
+      # 💡 2. SỬA ĐOẠN NÀY: Loại bỏ các dependencies lằng nhằng, chỉ giữ lại con Database sạch
       postgres:
         condition: service_healthy
-        required: false
     environment:
       SUPERSET_SECRET_KEY: "${SUPERSET_SECRET_KEY}"
       ADMIN_PASSWORD: "${SUPERSET_ADMIN_PASSWORD}"
