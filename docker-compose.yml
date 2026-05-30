@@ -220,15 +220,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.superset
-    # 💡 1. SỬA DÒNG NÀY: Thay đổi tag image để Docker Compose tự quản lý tên chuẩn Production
     image: olist-brazilian-ecommerce-superset:latest
     container_name: de_superset
     env_file:
       - .env
     ports:
-      - "${SUPERSET_BIND_ADDRESS:-0.0.0.0}:${SUPERSET_HOST_PORT:-8088}:8088"
+      # Match hoàn toàn với biến môi trường: Cổng ngoài (8090) -> Cổng trong container (8088)
+      - "${SUPERSET_BIND_ADDRESS:-0.0.0.0}:${SUPERSET_HOST_PORT:-8090}:${SUPERSET_PORT:-8088}"
     depends_on:
-      # 💡 2. SỬA ĐOẠN NÀY: Loại bỏ các dependencies lằng nhằng, chỉ giữ lại con Database sạch
       postgres:
         condition: service_healthy
     environment:
@@ -238,26 +237,19 @@ services:
       POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
       POSTGRES_USER: "${POSTGRES_USER:-de_user}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-de_password}"
-      POSTGRES_SUPERSET_DB: "${POSTGRES_SUPERSET_DB:-superset}"
     volumes:
       - superset_home:/app/superset_home
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+    # 🔴 ĐIỂM SỬA 1: Gunicorn lắng nghe động theo biến ${SUPERSET_PORT} (tức là 8088)
     command: >
-      bash -c "superset db upgrade &&
-      superset fab create-admin
-      --username ${SUPERSET_ADMIN_USER}
-      --firstname ${SUPERSET_ADMIN_FIRSTNAME}
-      --lastname ${SUPERSET_ADMIN_LASTNAME}
-      --email ${SUPERSET_ADMIN_EMAIL}
-      --password ${SUPERSET_ADMIN_PASSWORD} || true &&
-      superset init &&
-      exec gunicorn -w 2 --timeout 120 -b 0.0.0.0:8088 --limit-request-line 0 --limit-request-field_size 0 \"superset.app:create_app()\""
+      bash -c "exec gunicorn -w 2 --timeout 120 -b 0.0.0.0:${SUPERSET_PORT:-8088} --limit-request-line 0 --limit-request-field_size 0 \"superset.app:create_app()\""
+    # 🔴 ĐIỂM SỬA 2: Lệnh Healthcheck tự động gọi vào đúng cổng nội bộ ${SUPERSET_PORT} qua biến môi trường
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health', timeout=5)\""]
+      test: ["CMD-SHELL", "python -c \"import os, urllib.request; port = os.getenv('SUPERSET_PORT', '8088'); urllib.request.urlopen(f'http://127.0.0.1:{port}/health', timeout=5)\""]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 90s
+      start_period: 60s
 
 volumes:
   postgres_data:
