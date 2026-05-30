@@ -220,7 +220,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.superset
-    image: olist-brazilian-ecommerce-superset:latest
+    image: olist-brazilian-ecommerce-superset:4.0.2
     container_name: de_superset
     env_file:
       - .env

@@ -1,4 +1,4 @@
-FROM apache/superset:latest
+FROM apache/superset:4.0.2
 
 # Chuyển sang root để có quyền ghi trực tiếp vào thư mục hệ thống /app/.venv
 USER root
