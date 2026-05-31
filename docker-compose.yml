@@ -230,6 +230,7 @@ services:
     environment:
       SUPERSET_SECRET_KEY: "${SUPERSET_SECRET_KEY}"
       ADMIN_PASSWORD: "${SUPERSET_ADMIN_PASSWORD}"
+      PYTHONPATH: "/app/pythonpath"
       POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
       POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
       POSTGRES_USER: "${POSTGRES_USER:-de_user}"
@@ -240,9 +241,7 @@ services:
       - superset_home:/app/superset_home
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py:ro
     # 🔴 ĐIỂM SỬA 1: Gunicorn lắng nghe động theo biến ${SUPERSET_PORT} (tức là 8088)
-    command: >
-      bash -c "exec gunicorn -w 2 --timeout 120 -b 0.0.0.0:${SUPERSET_PORT:-8088} --limit-request-line 0 --limit-request-field_size 0 \"superset.app:create_app()\""
-    # 🔴 ĐIỂM SỬA 2: Lệnh Healthcheck tự động gọi vào đúng cổng nội bộ ${SUPERSET_PORT} qua biến môi trường
+    command: ["/usr/bin/run-server.sh"]
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import os, urllib.request; port = os.getenv('SUPERSET_PORT', '8088'); urllib.request.urlopen(f'http://127.0.0.1:{port}/health', timeout=5)\""]
       interval: 30s
