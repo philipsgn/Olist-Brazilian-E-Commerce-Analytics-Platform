@@ -1,10 +1,8 @@
 FROM apache/superset:4.0.2
 
-# Chuyển sang root để có quyền ghi trực tiếp vào thư mục hệ thống /app/.venv
 USER root
 
-# Dùng pip hệ thống để cài, nhưng ép target thẳng vào site-packages của môi trường ảo
-RUN pip install --no-cache-dir --target=/app/.venv/lib/python3.10/site-packages psycopg2-binary pyathena
+# Cài đặt trực tiếp vào môi trường Python của Superset
+RUN pip install --no-cache-dir psycopg2-binary pyathena
 
-# Trả lại quyền chạy cho user mặc định
 USER superset

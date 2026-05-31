@@ -227,9 +227,6 @@ services:
     ports:
       # Match hoàn toàn với biến môi trường: Cổng ngoài (8090) -> Cổng trong container (8088)
       - "${SUPERSET_BIND_ADDRESS:-0.0.0.0}:${SUPERSET_HOST_PORT:-8090}:${SUPERSET_PORT:-8088}"
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
       SUPERSET_SECRET_KEY: "${SUPERSET_SECRET_KEY}"
       ADMIN_PASSWORD: "${SUPERSET_ADMIN_PASSWORD}"
@@ -238,7 +235,7 @@ services:
       POSTGRES_USER: "${POSTGRES_USER:-de_user}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-de_password}"
       SUPERSET_CONFIG_PATH: "/app/pythonpath/superset_config.py"
-      SQLALCHEMY_DATABASE_URI: "postgresql+psycopg2://${POSTGRES_USER:-de_user}:${POSTGRES_PASSWORD:-de_password}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_SUPERSET_DB:-superset}"
+      SQLALCHEMY_DATABASE_URI: "sqlite:////app/superset_home/superset.db"
     volumes:
       - superset_home:/app/superset_home
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py:ro
