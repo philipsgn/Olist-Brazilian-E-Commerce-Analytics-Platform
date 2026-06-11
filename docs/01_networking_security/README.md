@@ -17,7 +17,20 @@ Mô hình bảo mật "Zero Trust" ở mức Network:
 - **IAM Roles:** Sử dụng IAM Instance Profile cho EC2 để tránh việc lưu trữ Access Key/Secret Key trong code.
 - **Secrets Manager:** Lưu trữ RDS credentials, Discord Webhook URL. Code sẽ gọi API để lấy secret lúc runtime.
 
-## 4. 📸 Screenshots (Hành động: Chèn ảnh của bạn vào đây)
-- **VPC Endpoints:** `![VPC Endpoints List](../images/screenshot_vpc_endpoints.png)`
-- **Security Groups Inbound Rules:** `![RDS Security Group](../images/screenshot_rds_sg.png)`
-- **Secrets Manager Console:** `![Secrets Manager](../images/screenshot_secrets.png)`
+## 4. 📸 Screenshots
+
+### VPC Endpoints
+
+![VPC Endpoints List](vpc-endpoint.png)
+
+### Security Groups — EC2
+
+![EC2 Security Group](ec2-sg.png)
+
+### Security Groups — RDS
+
+![RDS Security Group](rds-sg.png)
+
+### Secrets Manager
+
+![Secrets Manager Console](secret-manager.png)

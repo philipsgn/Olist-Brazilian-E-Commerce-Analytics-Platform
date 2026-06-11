@@ -12,7 +12,12 @@ Dữ liệu được tổ chức theo cấu trúc 3 tầng chuẩn industry:
   - Sau 180 ngày: Chuyển sang **S3 Glacier Flexible Retrieval** để lưu trữ dài hạn với chi phí cực thấp.
 - **Compression:** Việc chuyển từ CSV sang Parquet Snappy giúp giảm dung lượng lưu trữ tới 70-80%.
 
-## 3. 📸 Screenshots (Hành động: Chèn ảnh của bạn vào đây)
-- **S3 Bucket Structure:** `![S3 Folders](../images/screenshot_s3_structure.png)`
-- **S3 Lifecycle Configuration:** `![Lifecycle Policy](../images/screenshot_s3_lifecycle.png)`
-- **Parquet Files in S3:** `![Parquet Files](../images/screenshot_s3_parquet.png)`
+## 3. 📸 Screenshots
+
+### S3 Bucket Structure
+
+![S3 Bucket Structure](s3-structure.png)
+
+### S3 Lifecycle Configuration
+
+![S3 Lifecycle Policy](s3-lifecycle.png)

@@ -28,25 +28,31 @@ Dữ liệu tại tầng Analytics (Gold) được thiết kế để phục v�
 
 ## 4. 📸 Screenshots & Verification
 
-Để minh chứng cho tính chính xác và hiệu năng của kiến trúc, dưới đây là các hình ảnh thực tế từ hệ thống:
-
-### 🔹 AWS Glue Data Catalog
+### 🔹 AWS Glue Data Catalog — Tables
 Hiển thị danh sách các bảng được đăng ký thông qua DDL. Mọi Metadata được quản lý tập trung tại đây.
-- **Screenshot:** `![Glue Data Catalog Tables](../images/screenshot_glue_catalog.png)`
-*(Hành động: Dùng ảnh image_08e7d5.png bạn đã chụp)*
 
-### 🔹 Partition Projection Configuration
+![Glue Data Catalog Tables](catalogs-tables.png)
+
+### 🔹 Partition Projection — marts_streaming_orders
 Bằng chứng cấu hình Senior trong phần `TBLPROPERTIES`. Athena tự động tính toán đường dẫn S3 mà không cần quét Metadata Store.
-- **Screenshot:** `![Partition Projection Config](../images/screenshot_athena_projection.png)`
-*(Hành động: Chụp phần Table Properties trong Glue của bảng marts_streaming_orders)*
 
-### 🔹 Athena Performance Tuning (Data Scanned)
+![Partition Projection Config](marts_streaming_orders.png)
+
+### 🔹 Partition Projection — stg_streaming_orders
+
+![Staging Table Config](stg_streaming_orders.png)
+
+### 🔹 Athena Query Editor
+Federated Query chéo giữa S3 Data Lake và RDS PostgreSQL tại một điểm truy vấn duy nhất.
+
+![Athena Query Editor](query_editor.png)
+
+### 🔹 Athena Performance — Data Scanned
 Chứng minh hiệu quả chi phí: Truy vấn hàng ngàn dòng dữ liệu nhưng chỉ quét vài KB nhờ kỹ thuật phân vùng thông minh.
-- **Screenshot:** `![Athena Query Performance](../images/screenshot_athena_query.png)`
-*(Hành động: Chụp màn hình Athena sau khi chạy câu Query Verify số 1 ở trên)*
+
+![Athena Query Performance](athena_query.png)
 
 ### 🔹 S3 Physical Storage Structure
 Cấu trúc thư mục thực tế trên S3 tuân thủ nghiêm ngặt định dạng `key=value` để tối ưu cho việc truy vấn.
-- **Screenshot:** `![S3 Physical Structure](../images/screenshot_s3_structure.png)`
-*(Hành động: Chụp giao diện S3 folder raw/streaming/year=...)*
 
+![S3 Physical Structure](s3_structure.png)
